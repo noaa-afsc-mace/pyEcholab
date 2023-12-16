@@ -41,15 +41,15 @@ ev_Sv_filename[38000] = './data/EK80_WBTmini_38(3)-200(1)-combi_CW_complex_test_
 ev_Sv_filename[200000] = './data/EK80_WBTmini_38(3)-200(1)-combi_CW_complex_test_EV-200.sv.mat'
 
 ev_TS_filename = {}
-ev_TS_filename[38000] = './data/EK80_WBTmini_38(3)-200(1)-combi_CW_complex_test_EV-38.ts.csv'
-ev_TS_filename[200000] = './data/EK80_WBTmini_38(3)-200(1)-combi_CW_complex_test_EV-200.ts.csv'
+ev_TS_filename[38000] = './data/EK80_WBTmini_38(3)-200(1)-combi_CW_complex_test_EV-38.ts.mat'
+ev_TS_filename[200000] = './data/EK80_WBTmini_38(3)-200(1)-combi_CW_complex_test_EV-200.ts.mat'
 
 ev_power_filename = {}
-ev_power_filename[38000] = './data/EK80_WBTmini_38(3)-200(1)-combi_CW_complex_test_EV-38.power.csv'
-ev_power_filename[200000] = './data/EK80_WBTmini_38(3)-200(1)-combi_CW_complex_test_EV-200.power.csv'
+ev_power_filename[38000] = './data/EK80_WBTmini_38(3)-200(1)-combi_CW_complex_test_EV-38.power.mat'
+ev_power_filename[200000] = './data/EK80_WBTmini_38(3)-200(1)-combi_CW_complex_test_EV-200.power.mat'
 
 ev_angles_filename = {}
-ev_angles_filename[38000] = './data/EK80_WBTmini_38(3)-200(1)-combi_CW_complex_test_EV-38.angles.csv'
+ev_angles_filename[38000] = './data/EK80_WBTmini_38(3)-200(1)-combi_CW_complex_test_EV-38.angles.mat'
 
 
 #  read in the .raw data file
@@ -112,19 +112,19 @@ for idx, frequency in enumerate(ev_Sv_filename):
 
     ev_filename = ev_TS_filename[frequency]
     print('Reading the echoview file %s' % (ev_TS_filename[frequency]))
-    ev_Ts_data = processed_data.read_ev_csv('', frequency, ev_filename,
+    ev_Ts_data = processed_data.read_ev_mat('', frequency, ev_filename,
             data_type='Ts')
 
     ev_filename = ev_power_filename[frequency]
     print('Reading the echoview file %s' % (ev_power_filename[frequency]))
-    ev_power_data = processed_data.read_ev_csv('', frequency, ev_filename,
+    ev_power_data = processed_data.read_ev_mat('', frequency, ev_filename,
             data_type='Power')
 
     # Try to read the EV angle data (not all tests have angle data)
     try:
         ev_filename = ev_angles_filename[frequency]
         print('Reading the echoview file %s' % (ev_angles_filename[frequency]))
-        ev_alongship, ev_athwartship = processed_data.read_ev_csv('', frequency,
+        ev_alongship, ev_athwartship = processed_data.read_ev_mat('', frequency,
                 ev_filename, data_type='angles')
     except:
         ev_alongship, ev_athwartship = (None, None)

@@ -152,7 +152,7 @@ class processed_data(ping_data):
 
         #  extend the _data_attributes list adding our data attribute
         self._data_attributes += ['data']
-        
+
         # create a list to track which data attributes are log based
         self._log_data = []
 
@@ -220,7 +220,7 @@ class processed_data(ping_data):
                             'contains ' + self.data_type.data_type + ' data '
                             'using an object that contains ' +
                             obj_to_insert.data_type + ' data.')
-                            
+
         # Get our range/depth vector.
         if hasattr(self, 'range'):
             this_vaxis = getattr(self, 'range')
@@ -704,22 +704,22 @@ class processed_data(ping_data):
         If the shift is constant, the vertical axis is changed and the sample
         data remains unchanged. If the shift is not constant for all pings, the
         sample data is shifted ping by ping.
-       
+
         Args:
             vert_shift (float, vector): A scalar or vector n_pings long that
                 contains the constant shift for all pings or a per-ping shift
                 respectively.
-        
+
             interpolate (bool): Set to True to interpolate sample data to the
                 new vertical axis. This changes the sample data and is not
                 recommended for quantitative work.
-                
+
                 Set this value to false to shift samples by sample thickness.
                 This preserves the sample data at the expense of an error of
                 up to 1/2 sample thickness in the total shift.
-                
+
                 Default: False
- 
+
         """
 
         #  get the vertical axis
@@ -774,15 +774,15 @@ class processed_data(ping_data):
                 self.to_linear()
             else:
                 is_log = False
-            
+
             # Create an array to store the currently shifting pings data
             this_ping = np.empty((old_samps))
-            
+
             # Iterate through the pings and interpolate or shift
             for ping in range(self.n_pings):
                 #  determine this pings current axis
                 this_axis = vert_axis + vert_shift[ping]
-                
+
                 if interpolate:
                     # Use numpy to interpolate sample data values to new axis. This
                     # results in samples being shifted the precise amount but will
@@ -1108,12 +1108,12 @@ class processed_data(ping_data):
                 #  we already have ping time so skip it
                 if attr_name == 'ping_time':
                     continue
-                    
+
                 #  check if this attribute has data
                 if data is None:
                     #  nope - move along...
                     continue
-                
+
                 #  check if we had data for this attribute
                 if attr_name in data:
                     #  yes - add or update it
@@ -1919,20 +1919,31 @@ class processed_data(ping_data):
 
 
 def read_ev_mat(channel_id, frequency, ev_mat_filename, data_type='Sv',
-        sample_dtype=np.float32, pad_n_samples=0):
+        sample_dtype=np.float32):
     '''read_ev_mat will read a .mat file exported by Echoview v7 or newer and
     return a processed data object containing the data.
-    
-        IMPORTANT NOTE - Echoview discards the first sample in all pings when reading Simrad
-                     .raw files and it centers its first sample (pyEcholab's 2nd sample)
-                     at a range of 1 sample thickness. pyEcholab centers the first sample
-                     at range of -1 sample thickness with the second sample (which is
-                     EV's first sample) at a range of 0. When loading exported EV data,
-                     the range vector will use pyEcholab's convention, resulting in the
-                     first sample starting at a range of 0. The result of this is that
-                     samples are shifted 1 sample thickness closer to the transducer in
-                     pyEcholab when compared to Echoview. This may result in differences
-                     between computations in EV and in pyEcholab.
+
+           channel_id (str): The returned processed_data object will have it's
+                             channel_id attribute set to this string. The channel_id
+                             can be any string that is a meaningful identifier to
+                             you.
+
+          frequency (float): Set frequency to the frequency of the data. This is used
+                             when performing certain operations on two processed_data
+                             objects. For example, when inserting data, the pd objects
+                             must share the same frequency.
+
+      ev_mat_filename (str): The full path to the Echoview mat export file, including file
+                             extension.
+
+            data_type (str): Set this to a string specifying the export data type. The
+                             data type can be:
+
+                                 Sv - sample Sv data
+                                 TS - sample TS data
+                                 angles - along and athwart angle data
+                                 power - sample power data
+
     '''
 
     import os
@@ -1948,9 +1959,12 @@ def read_ev_mat(channel_id, frequency, ev_mat_filename, data_type='Sv',
     n_pings = len(ev_data['PingNames'])
     max_samples = -1
     for p in ev_data['PingNames']:
-        this_samples = ev_data[p].Sample_count + pad_n_samples
+        this_samples = ev_data[p].Sample_count
         if this_samples > max_samples:
             max_samples = this_samples
+
+    #  shift_samples keyword has been deprecated
+    shift_samples = 0
 
     #  create an empty processed_data object
     p_data = processed_data(channel_id, frequency, data_type)
@@ -1958,6 +1972,9 @@ def read_ev_mat(channel_id, frequency, ev_mat_filename, data_type='Sv',
     #  create the data arrays
     data = np.empty((n_pings, max_samples), dtype=sample_dtype)
     data.fill(np.nan)
+    if data_type.lower() == 'angles':
+        athwart = np.empty((n_pings, max_samples), dtype=sample_dtype)
+        athwart.fill(np.nan)
     p_data.add_data_attribute('data', data)
     ping_time = np.empty((n_pings), dtype='datetime64[ms]')
     p_data.add_data_attribute('ping_time', ping_time)
@@ -2000,27 +2017,51 @@ def read_ev_mat(channel_id, frequency, ev_mat_filename, data_type='Sv',
         this_time = np.datetime64(datetime.strptime(this_time, "%m-%d-%Y %H:%M:%S.%f"))
         p_data.ping_time[idx] = this_time
         this_n_samps = ev_data[ping].Data_values[:].size
-        p_data.data[idx,pad_n_samples:this_n_samps+pad_n_samples] = ev_data[ping].Data_values[:]
+        if data_type.lower()  == 'angles':
+            p_data.data[idx,shift_samples:this_n_samps+shift_samples] = ev_data[ping].Data_values[0,:]
+            athwart[idx,shift_samples:this_n_samps+shift_samples] = ev_data[ping].Data_values[1,:]
+        else:
+            p_data.data[idx,shift_samples:this_n_samps+shift_samples] = ev_data[ping].Data_values[:]
 
-    return p_data
+    if data_type.lower()   == 'angles':
+        p_data_athwart = p_data.empty_like()
+        p_data_athwart.data = athwart
+        p_data_athwart.data_type = 'angles_athwartship'
+
+        p_data.data_type = 'angles_alongship'
+        return p_data, p_data_athwart
+
+    else:
+
+        return p_data
 
 
 def read_ev_csv(channel_id, frequency, ev_csv_filename, data_type='Ts',
         sample_dtype=np.float32):
     '''read_ev_csv will read a .csv file exported by Echoview v7 or newer and
     return a processed data object containing the data.
-    
-    IMPORTANT NOTE - Echoview discards the first sample in all pings when reading Simrad
-                     .raw files and it centers its first sample (pyEcholab's 2nd sample)
-                     at a range of 1 sample thickness. pyEcholab centers the first sample
-                     at range of -1 sample thickness with the second sample (which is
-                     EV's first sample) at a range of 0. When loading exported EV data,
-                     the range vector will use pyEcholab's convention, resulting in the
-                     first sample starting at a range of 0. The result of this is that
-                     samples are shifted 1 sample thickness closer to the transducer in
-                     pyEcholab when compared to Echoview. This may result in differences
-                     between computations in EV and in pyEcholab.
-    
+
+           channel_id (str): The returned processed_data object will have it's
+                             channel_id attribute set to this string. The channel_id
+                             can be any string that is a meaningful identifier to
+                             you.
+
+          frequency (float): Set frequency to the frequency of the data. This is used
+                             when performing certain operations on two processed_data
+                             objects. For example, when inserting data, the pd objects
+                             must share the same frequency.
+
+      ev_csv_filename (str): The full path to the Echoview csv export file, including file
+                             extension.
+
+            data_type (str): Set this to a string specifying the export data type. The
+                             data type can be:
+
+                                 Sv - sample Sv data
+                                 TS - sample TS data
+                                 angles - along and athwart angle data
+                                 power - sample power data
+
     '''
 
     import os
@@ -2053,13 +2094,18 @@ def read_ev_csv(channel_id, frequency, ev_csv_filename, data_type='Ts',
                 max_samples = this_samples
             n_pings += 1
 
+    #  shift_samples keyword has been deprecated
+    shift_samples = 0
+
     #  create an empty processed_data object
     p_data = processed_data(channel_id, frequency, data_type)
 
     #  create the data arrays
     data = np.empty((n_pings, max_samples), dtype=sample_dtype)
-    if data_type == 'angles':
+    data.fill(np.nan)
+    if data_type.lower() == 'angles':
         athwart = np.empty((n_pings, max_samples), dtype=sample_dtype)
+        athwart.fill(np.nan)
     p_data.add_data_attribute('data', data)
     ping_time = np.empty((n_pings), dtype='datetime64[ms]')
     p_data.add_data_attribute('ping_time', ping_time)
@@ -2102,11 +2148,14 @@ def read_ev_csv(channel_id, frequency, ev_csv_filename, data_type='Ts',
             this_time = np.datetime64(datetime.strptime(this_time, "%Y-%m-%d %H:%M:%S.%f"))
             p_data.ping_time[idx] = this_time
             this_samples = int(row[12])
-            if data_type == 'angles':
-                p_data.data[idx,0:this_samples] = row[13:this_samples*2 + 13:2]
-                athwart[idx,0:this_samples] = row[14:this_samples * 2 + 14:2]
+            if data_type.lower()== 'angles':
+                p_data.data[idx,shift_samples:this_samples + shift_samples] = \
+                        row[13:this_samples*2 + 13:2]
+                athwart[idx,shift_samples:this_samples + shift_samples] = \
+                        row[14:this_samples * 2 + 14:2]
             else:
-                p_data.data[idx,0:this_samples] = row[13:int(row[12]) + 13]
+                p_data.data[idx,shift_samples:this_samples + shift_samples] = \
+                        row[13:int(row[12]) + 13]
             idx += 1
     p_data.data[p_data.data < -9.9000003e+36] = np.nan
 
@@ -2120,7 +2169,7 @@ def read_ev_csv(channel_id, frequency, ev_csv_filename, data_type='Ts',
     else:
         p_data.is_log = False
 
-    if data_type in ['angles', 'Angles']:
+    if data_type.lower()   == 'angles':
         p_data_athwart = p_data.empty_like()
         p_data_athwart.data = athwart
         p_data_athwart.data_type = 'angles_athwartship'

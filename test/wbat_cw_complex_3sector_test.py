@@ -14,9 +14,8 @@ write methods are working properly.
 
 When the test is passing:
 
-Power values will match Echoview values
+Power and Angle values will match Echoview values
 Sv and TS values will be within +-0.01 dB of Echoview values
-Angle values will be within +-0.01 deg. of Echoview values
 Range values will match
 Ping time values will match
 
@@ -37,11 +36,11 @@ from echolab2.processing import processed_data
 # for certain data types. For CW data, power values should match but differences
 # in the implementation of the conversion methods result in minor differences
 convert_atol = 1e-02
-rewrite_atol = 12e-03
+rewrite_atol = 1e-03
 
 # For Sv and TS values, pyEcholab and Echoview differ most in the first 13 samples
 # or so and so we skip comparing them.
-start_sample = 13
+start_sample = 12
 
 
 # Specify the data files for this test
@@ -56,15 +55,15 @@ ev_Sv_filename[38000] = './data/EK80_WBTmini_38(3)-200(1)-combi_CW_complex_test_
 ev_Sv_filename[200000] = './data/EK80_WBTmini_38(3)-200(1)-combi_CW_complex_test_EV-200.sv.mat'
 
 ev_TS_filename = {}
-ev_TS_filename[38000] = './data/EK80_WBTmini_38(3)-200(1)-combi_CW_complex_test_EV-38.ts.csv'
-ev_TS_filename[200000] = './data/EK80_WBTmini_38(3)-200(1)-combi_CW_complex_test_EV-200.ts.csv'
+ev_TS_filename[38000] = './data/EK80_WBTmini_38(3)-200(1)-combi_CW_complex_test_EV-38.ts.mat'
+ev_TS_filename[200000] = './data/EK80_WBTmini_38(3)-200(1)-combi_CW_complex_test_EV-200.ts.mat'
 
 ev_power_filename = {}
-ev_power_filename[38000] = './data/EK80_WBTmini_38(3)-200(1)-combi_CW_complex_test_EV-38.power.csv'
-ev_power_filename[200000] = './data/EK80_WBTmini_38(3)-200(1)-combi_CW_complex_test_EV-200.power.csv'
+ev_power_filename[38000] = './data/EK80_WBTmini_38(3)-200(1)-combi_CW_complex_test_EV-38.power.mat'
+ev_power_filename[200000] = './data/EK80_WBTmini_38(3)-200(1)-combi_CW_complex_test_EV-200.power.mat'
 
 ev_angles_filename = {}
-ev_angles_filename[38000] = './data/EK80_WBTmini_38(3)-200(1)-combi_CW_complex_test_EV-38.angles.csv'
+ev_angles_filename[38000] = './data/EK80_WBTmini_38(3)-200(1)-combi_CW_complex_test_EV-38.angles.mat'
 
 
 class wbat_cw_complex_3sector_test(unittest.TestCase):
@@ -105,7 +104,7 @@ class wbat_cw_complex_3sector_test(unittest.TestCase):
                 Sp = raw_data.get_Sp()
 
                 # Read the Echoview export file containing TS.
-                ev_TS = processed_data.read_ev_csv('', 0, ev_file, data_type='TS')
+                ev_TS = processed_data.read_ev_mat('', 0, ev_file, data_type='TS')
 
                 # Compare TS values
                 self.assertTrue(np.allclose(Sp[:,start_sample:], ev_TS[:,start_sample:],
@@ -136,7 +135,7 @@ class wbat_cw_complex_3sector_test(unittest.TestCase):
                 power = raw_data.get_power()
 
                 # Read the Echoview export file containing power.
-                ev_power = processed_data.read_ev_csv('', 0, ev_file, data_type='power')
+                ev_power = processed_data.read_ev_mat('', 0, ev_file, data_type='power')
 
                 # Compare power values
                 self.assertTrue(np.allclose(power[:,:], ev_power[:,:], equal_nan=True))
@@ -200,7 +199,7 @@ class wbat_cw_complex_3sector_test(unittest.TestCase):
                 alongship, athwartship = raw_data.get_physical_angles()
 
                 # Read the Echoview export file containing angles.
-                ev_alongship, ev_athwartship = processed_data.read_ev_csv('', 0,
+                ev_alongship, ev_athwartship = processed_data.read_ev_mat('', 0,
                         ev_file, data_type='angles')
 
                 # Compare angles
@@ -252,7 +251,7 @@ class wbat_cw_complex_3sector_test(unittest.TestCase):
                 power = raw_data.get_power()
 
                 # Read the Echoview export file containing power.
-                ev_power = processed_data.read_ev_csv('', 0, ev_file, data_type='power')
+                ev_power = processed_data.read_ev_mat('', 0, ev_file, data_type='power')
 
                 # Compare power values
                 self.assertTrue(np.allclose(power[:,:], ev_power[:,:], equal_nan=True))
@@ -271,7 +270,7 @@ class wbat_cw_complex_3sector_test(unittest.TestCase):
                 alongship, athwartship = raw_data.get_physical_angles()
 
                 # Read the Echoview export file containing angles
-                ev_alongship, ev_athwartship = processed_data.read_ev_csv('', 0,
+                ev_alongship, ev_athwartship = processed_data.read_ev_mat('', 0,
                         ev_file, data_type='angles')
 
                 # Compare angles

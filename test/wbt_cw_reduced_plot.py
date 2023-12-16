@@ -103,13 +103,13 @@ for idx, frequency in enumerate(ev_Sv_filename):
     #  called doesn't need to recompute it.
 
     #  convert to power
-    ek80_power = raw_data.get_power(calibration=calibration)#, clear_cache=False)
+    ek80_power = raw_data.get_power(calibration=calibration, clear_cache=False)
 
     #  convert to Sv
-    ek80_Sv = raw_data.get_Sv(calibration=calibration)#, clear_cache=False)
+    ek80_Sv = raw_data.get_Sv(calibration=calibration, clear_cache=False)
 
     #  and convert to Ts
-    ek80_Ts = raw_data.get_Sp(calibration=calibration)#, clear_cache=False)
+    ek80_Ts = raw_data.get_Sp(calibration=calibration, clear_cache=False)
 
     # Get the angle data
     alongship, athwartship = raw_data.get_physical_angles(calibration=calibration)

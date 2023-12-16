@@ -753,7 +753,7 @@ class EK60(object):
             #  to store this data.
             this_raw_data = None
             for raw_obj in self.raw_data[new_datagram['channel_id']]:
-                
+
                 if raw_obj.data_type == '':
                     #  This raw_data object has no type so is empty and can store anything
                     this_raw_data = raw_obj
@@ -2305,7 +2305,7 @@ class raw_data(ping_data):
 
 
     def get_Sv(self, calibration=None, linear=False, tvg_correction=True,
-               return_depth=False, **kwargs):
+               return_depth=False,  **kwargs):
         """Gets Sv data
 
         This method returns a processed_data object containing Sv or sv data.
@@ -2397,6 +2397,13 @@ class raw_data(ping_data):
             time_order (bool): Set to True to return data in time order. If
                 False, data will be returned in the order it was read.
                 Default: True
+
+            drop_first_sample (bool): Set to True to drop the first sample in
+                each ping and shift the other samples up. This matches the
+                behavior of Echoview when exporting sample data and allows one
+                to directly compare pyEcholab and Echoview output.
+                Default: False
+
 
         Returns:
             A processed_data object containing Sv (or sv if linear is True).
@@ -3000,7 +3007,7 @@ class raw_data(ping_data):
 
     def _get_sample_data(self, property_name, calibration=None,
             resample_interval=RESAMPLE_SHORTEST, return_indices=None,
-            **kwargs):
+            drop_first_sample=False, **kwargs):
         """Retrieves sample data.
 
         This method returns a processed data object that contains the
@@ -3065,6 +3072,9 @@ class raw_data(ping_data):
             #range = (np.arange(-1, num_samples-1) + sample_offset) * thickness
 
             return range
+
+
+        print(drop_first_sample)
 
         # Check if the user supplied an explicit list of indices to return.
         if isinstance(return_indices, np.ndarray):
@@ -3169,7 +3179,7 @@ class raw_data(ping_data):
                     # Interpolate samples to target range
                     interp_f = interp1d(resample_range, output[pings_to_interp,:], axis=1,
                             bounds_error=False, fill_value=np.nan, assume_sorted=True)
-                    output[pings_to_interp,:] = interp_f(resample_range)
+                    output[pings_to_interp,:] = interp_f(range)
 
         else:
             # We have a fixed sound speed and only need to calculate a single
@@ -3177,6 +3187,11 @@ class raw_data(ping_data):
             sound_velocity = unique_sound_velocity[0]
             range = get_range_vector(output.shape[1], sample_interval,
                     sound_velocity, min_sample_offset)
+
+        if drop_first_sample:
+            range = get_range_vector(output.shape[1] - 1, sample_interval,
+                    sound_velocity, min_sample_offset)
+            output = output[:,1:]
 
         # Assign the results to the "data" processed_data object.
         p_data.add_data_attribute('data', output)

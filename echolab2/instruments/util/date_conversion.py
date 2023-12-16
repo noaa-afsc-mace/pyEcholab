@@ -126,7 +126,7 @@ def nt_to_unix(nt_timestamp_tuple, return_datetime=True):
     
     This method was changed 8/2023 to use integer math to compute the NT time from
     the provided datetime64 object to reduce errors introduced when using FP math.
-    THIS CHANGE ONLY APPLIES WHEN RETURNING A DATETIME OBJECT.
+    This change only applies when returning a datetime object.
     
     '''
 

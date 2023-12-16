@@ -929,7 +929,7 @@ class EK80(object):
                                     elif not is_fm and raw_obj.data_type == 'complex-CW':
                                         this_raw_data = raw_obj
                                         break
-                                
+
                     #  check if we need to create a new raw_data object
                     if this_raw_data is None:
                         #  create the new raw_data object
@@ -2515,7 +2515,7 @@ class raw_data(ping_data):
         self.channel_mode[this_ping] = tx_parms['channel_mode']
         self.pulse_form[this_ping] = tx_parms['pulse_form']
         if tx_parms['pulse_form'] == 0:
-            # CW files will have the frequency parameter - well, except some 
+            # CW files will have the frequency parameter - well, except some
             # files which omit frequency and instead populate start/stop with
             # the same value.
             if 'frequency' in tx_parms:
@@ -3754,6 +3754,24 @@ class raw_data(ping_data):
                 return False
 
 
+    def is_passive(self, all=False):
+        '''Convenience method that returns True if any of the pings contain
+        passive data.
+        '''
+        # Check if we have any passive pings
+        is_passive = self.channel_mode == 1
+        if all:
+            if np.all(is_passive):
+                return True
+            else:
+                return False
+        else:
+            if np.any(is_passive):
+                return True
+            else:
+                return False
+
+
     def get_frequency(self, unique=False):
         '''Convenience method that returns the frequency of the transmit signals
         of the data stored in the raw_data object. If the transmit signal is FM,
@@ -4103,7 +4121,7 @@ class raw_data(ping_data):
             linear (bool):  Set to True to return linear values.
             return_indices (array): A numpy array of indices to return.
             tvg_correction (bool): Set to True to apply a correction to the
-                range of (2 * sample thickness) for GPTs and 
+                range of (2 * sample thickness) for GPTs and
                 (sound speed * transmitted pulse length / 4) for WBTs.
 
         Returns:
@@ -4160,7 +4178,7 @@ class raw_data(ping_data):
         is_fm = cal_parms['pulse_form'] > 0
         B_theta_phi_m[is_fm] = (0.5 * 6.0206 *
                 ((np.abs(theta - cal_parms['angle_offset_alongship'][is_fm]) /
-                (cal_parms['beam_width_alongship'][is_fm] / 2)) ** 2 + 
+                (cal_parms['beam_width_alongship'][is_fm] / 2)) ** 2 +
                 (np.abs(phi - cal_parms['angle_offset_athwartship'][is_fm]) /
                 (cal_parms['beam_width_athwartship'][is_fm] / 2)) ** 2 -
                 0.18 * ((np.abs(theta - cal_parms['angle_offset_alongship'][is_fm])) /
@@ -4168,7 +4186,7 @@ class raw_data(ping_data):
                 (np.abs(phi - cal_parms['angle_offset_athwartship'][is_fm]) /
                 (cal_parms['beam_width_athwartship'][is_fm] / 2)) ** 2))
         B_theta_phi_m[is_fm] = 10**(B_theta_phi_m[is_fm] / 10)
-        
+
         #  convert transceiver gain to linear units
         transceiver_gain = 10**(cal_parms['gain'] / 10)
 
@@ -4219,7 +4237,7 @@ class raw_data(ping_data):
         # Subtract the system gains.
         data -= gains[:, np.newaxis]
 
-        # Apply sa correction for non FM Sv/sv. 
+        # Apply sa correction for non FM Sv/sv.
         if convert_to in ['sv','Sv']:
             # Only apply to CW data
             not_fm = cal_parms['pulse_form'] == 0
@@ -4371,17 +4389,25 @@ class raw_data(ping_data):
         # check if first ping is FM or CW
         is_fm = self.pulse_form[0] > 0
 
+        if np.all(self.channel_mode):
+            channel_mode = 'passive'
+        elif np.any(self.channel_mode):
+            channel_mode = 'mixed active/passive'
+        else:
+            channel_mode = 'active'
+
         # Print some more info about the EK80.raw_data instance.
         n_pings = len(self.ping_time)
         if n_pings > 0:
-            msg = msg + "                   channel: " + self.channel_id + "\n"
+            msg = msg + "                     channel: " + self.channel_id + "\n"
+            msg = msg + "                        mode: " + channel_mode + "\n"
             if is_fm:
                 msg = msg + "frequency start (first ping): " + str(
                     self.frequency_start[0]) + "\n"
                 msg = msg + "  frequency end (first ping): " + str(
                     self.frequency_end[0]) + "\n"
             else:
-                msg = msg + "    frequency (first ping): " + str(
+                msg = msg + "      frequency (first ping): " + str(
                     self.frequency[0]) + "\n"
             msg = msg + "   pulse length (first ping): " + str(
                 self.pulse_duration[0]) + "\n"
@@ -4392,20 +4418,20 @@ class raw_data(ping_data):
             msg = msg + "             number of pings: " + str(n_pings) + "\n"
             if hasattr(self, 'power'):
                 n_pings,n_samples = self.power.shape
-                msg = msg + ("                  data type: CW reduced\n")
-                msg = msg + ("     power array dimensions: (" + str(n_pings) +
+                msg = msg + ("                   data type: CW reduced\n")
+                msg = msg + ("      power array dimensions: (" + str(n_pings) +
                              "," + str(n_samples) + ")\n")
             if hasattr(self, 'angles_alongship_e'):
                 n_pings,n_samples = self.angles_alongship_e.shape
-                msg = msg + ("     angle array dimensions: (" + str(n_pings) +
+                msg = msg + ("      angle array dimensions: (" + str(n_pings) +
                              "," + str(n_samples) + ")\n")
             if hasattr(self, 'complex'):
                 n_pings,n_samples,n_sectors = self.complex.shape
                 if is_fm:
-                    msg = msg + ("                  data type: FM\n")
+                    msg = msg + ("                   data type: FM\n")
                 else:
                     msg = msg + ("                  data type: CW complex\n")
-                msg = msg + ("   complex array dimensions: (" + str(n_pings) +
+                msg = msg + ("    complex array dimensions: (" + str(n_pings) +
                              "," + str(n_samples) + "," + str(n_sectors) + ")\n")
         else:
             msg = msg + "  raw_data object contains no data\n"
@@ -4558,7 +4584,7 @@ class ek80_calibration(calibration):
             if param_data is None or np.isnan(param_data):
                 param_data = self.default_acidity
 
-        # older file formats also lack rx_sample_frequency 
+        # older file formats also lack rx_sample_frequency
         elif param_name == 'rx_sample_frequency':
             #  create the return array
             param_data = np.empty((return_indices.shape[0]), dtype=np.float32)
@@ -4625,17 +4651,17 @@ class ek80_calibration(calibration):
 
                         # Compute an adjusted gain based on the center frequency of the broadband signal
                         # and the nominal frequency of the transducer.
-                        new_data[idx] = gain + (20 * np.log10(frequency[idx] / 
+                        new_data[idx] = gain + (20 * np.log10(frequency[idx] /
                                 config_obj['transducer_frequency']))
                 else:
                     # CW gain is obtained from the gain table that is indexed by pulse duration
                     if param_data.ndim == 1:
-                        new_data[idx] = (param_data[config_obj['pulse_duration'] == 
+                        new_data[idx] = (param_data[config_obj['pulse_duration'] ==
                                 raw_data.pulse_duration[idx]][0])
                     else:
                         new_data[idx] = (param_data[idx, config_obj['pulse_duration'] ==
                                 raw_data.pulse_duration[idx]][0])
-                                
+
             param_data = new_data
 
         #  similar to gain, the angle offset and beamwidth params for calibrated FM data
@@ -4643,7 +4669,7 @@ class ek80_calibration(calibration):
         #  values are taken from the configuration header.
         elif param_name in ['angle_offset_alongship', 'angle_offset_athwartship',
                             'beam_width_alongship', 'beam_width_athwartship']:
-                                
+
             # initialize the return array
             new_data = np.empty((return_indices.shape[0]), dtype=np.float32)
 
@@ -4676,13 +4702,13 @@ class ek80_calibration(calibration):
         #  again for angle sensitivities
         elif param_name in ['angle_sensitivity_alongship',
                 'angle_sensitivity_athwartship']:
-                                
+
             # initialize the return array
             new_data = np.empty((return_indices.shape[0]), dtype=np.float32)
 
             # Get the frequency - this returns the center freq for FM
             frequency = raw_data.get_frequency()
-            
+
             # Work thru the pings, extracting the params
             for idx, config_obj in enumerate(raw_data.configuration[return_indices]):
                 #  check if this is an FM ping

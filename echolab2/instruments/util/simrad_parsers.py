@@ -27,8 +27,7 @@
 | Authors:
 |       Zac Berkowitz <zac.berkowitz@gmail.com>
 |       Rick Towler   <rick.towler@noaa.gov>
-| Maintained by:
-|       Rick Towler   <rick.towler@noaa.gov>
+|       Ketil Malde <ketil@malde.org>
 
 """
 
@@ -581,9 +580,40 @@ class SimradMRUParser(_SimradDatagramParser):
         pitch:        float
         heading:      float
 
+    Version 1 contains (from https://www3.mbari.org/products/mbsystem/formatdoc/KongsbergKmall/EMdgmFormat_RevH/html/kmBinary.html):
+
+    Status word	See 1)	uint32	4U
+    Latitude	deg	double	8F
+    Longitude	deg	double	8F
+    Ellipsoid height	m	float	4F
+    Roll	deg	float	4F
+    Pitch	deg	float	4F
+    Heading	deg	float	4F
+    Heave	m	float	4F
+    Roll rate	deg/s	float	4F
+    Pitch rate	deg/s	float	4F
+    Yaw rate	deg/s	float	4F
+    North velocity	m/s	float	4F
+    East velocity	m/s	float	4F
+    Down velocity	m/s	float	4F
+    Latitude error	m	float	4F
+    Longitude error	m	float	4F
+    Height error	m	float	4F
+    Roll error	deg	float	4F
+    Pitch error	deg	float	4F
+    Heading error	deg	float	4F
+    Heave error	m	float	4F
+    North acceleration	m/s2	float	4F
+    East acceleration	m/s2	float	4F
+    Down acceleration	m/s2	float	4F
+    Delayed heave:	-	-	-
+    UTC seconds	s	uint32	4U
+    UTC nanoseconds	ns	uint32	4U
+    Delayed heave	m	float	4F
+
     The following methods are defined:
 
-        from_string(str):    parse a raw EK800 MRU datagram
+        from_string(str):    parse a raw EK80 MRU datagram
                             (with leading/trailing datagram size stripped)
 
         to_string():         Returns the datagram as a raw string (including leading/trailing size fields)
@@ -597,8 +627,39 @@ class SimradMRUParser(_SimradDatagramParser):
                        ('heave', 'f'),
                        ('roll', 'f'),
                        ('pitch', 'f'),
+                       ('heading', 'f')],
+                   1: [('type', '4s'),
+                       ('low_date', 'L'),
+                       ('high_date', 'L'),
+                       ('start_id', '4s'), # KMB#
+                       ('status_word', 'L'),
+                       ('dummy', '12s'),
+                       ('latitude', 'd'),
+                       ('longtitude', 'd'),
+                       ('ellipsoid_height', 'f'),
+                       ('roll', 'f'),
+                       ('pitch', 'f'),
                        ('heading', 'f'),
-                      ]
+                       ('heave', 'f'),
+                       ('roll_rate', 'f'),
+                       ('pitch_rate', 'f'),
+                       ('yaw_rate', 'f'),
+                       ('velocity_north', 'f'),
+                       ('velocity_east', 'f'),
+                       ('velocity_down', 'f'),
+                       ('latitude_error', 'f'),
+                       ('longtitude_error', 'f'),
+                       ('height_error', 'f'),
+                       ('roll_error', 'f'),
+                       ('pitch_error', 'f'),
+                       ('heading_error', 'f'),
+                       ('heave_error', 'f'),
+                       ('accel_north', 'f'),
+                       ('accel_east', 'f'),
+                       ('accel_down', 'f'),
+                       ('heave_delay_high', 'L'),
+                       ('heave_delay_low', 'L'),
+                       ('heave_delayed', 'f')]
                    }
 
         _SimradDatagramParser.__init__(self, "MRU", headers)
@@ -1039,7 +1100,7 @@ class SimradXMLParser(_SimradDatagramParser):
                             #this_params['gain'] = this_params['gain'][0]
                             this_params.pop('frequency', None)
                             xdcr_params_wideband[freq] = this_params
-                            
+
                         n_xdcr_params_wideband = len(xdcr_params_wideband)
                         if n_xdcr_params_wideband:
                             # unpack the wideband cal params
@@ -1049,7 +1110,7 @@ class SimradXMLParser(_SimradDatagramParser):
                             beam_width_athwart = np.empty((n_xdcr_params_wideband), dtype=np.float32)
                             angle_offset_along = np.empty((n_xdcr_params_wideband), dtype=np.float32)
                             angle_offset_athwart = np.empty((n_xdcr_params_wideband), dtype=np.float32)
-                            
+
                             for idx, freq in enumerate(xdcr_params_wideband):
                                 frequency[idx] = freq
                                 gains[idx] = xdcr_params_wideband[freq]['gain']
@@ -1202,7 +1263,7 @@ class SimradXMLParser(_SimradDatagramParser):
 
                             # Get a reference to this channels configuration data
                             chan_data = data['configuration'][chan]
-                            
+
                             # Unpack the wideband configuration data
                             packed_params = {}
                             if chan_data['transducer_params_wideband']:
@@ -1212,7 +1273,7 @@ class SimradXMLParser(_SimradDatagramParser):
                                             'beam_width_athwartship':chan_data['transducer_params_wideband']['beam_width_athwartship'][idx],
                                             'angle_offset_alongship':chan_data['transducer_params_wideband']['angle_offset_alongship'][idx],
                                             'angle_offset_athwartship':chan_data['transducer_params_wideband']['angle_offset_athwartship'][idx]}
-    
+
                             if packed_params:
                                 chan_data['transducer_params_wideband'] = packed_params
 
