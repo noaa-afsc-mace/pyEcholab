@@ -81,7 +81,7 @@ def dt64_to_nt(dt64):
     :type dt64: datetime64
 
     Returns a tuple containing the NT time.
-    
+
     This method was changed 8/2023 to use integer math to compute the NT time from
     the provided datetime64 object to reduce errors introduced when using FP math.
 
@@ -95,11 +95,10 @@ def dt64_to_nt(dt64):
         # Not NaT so we convert to NT time
         ts = (dt64 - np.datetime64('1970-01-01T00:00:00')) / np.timedelta64(1, 's')
         unix_datetime = datetime.datetime.fromtimestamp(ts, tz=pytz_utc)
-        sec_past_nt_epoch = (unix_datetime - UTC_NT_EPOCH)#.total_seconds()
+        time_past_nt_epoch = (unix_datetime - UTC_NT_EPOCH)
 
-        #onehundred_ns_intervals = int(sec_past_nt_epoch * 1e7)
-        onehundred_ns_intervals = (((sec_past_nt_epoch.days * 86400) + sec_past_nt_epoch.seconds) *
-                10000000) + (sec_past_nt_epoch.microseconds * 10)
+        onehundred_ns_intervals = (((time_past_nt_epoch.days * 86400) + time_past_nt_epoch.seconds) *
+                10000000) + (time_past_nt_epoch.microseconds * 10)
 
         lowDateTime = onehundred_ns_intervals & 0xFFFFFFFF
         highDateTime = onehundred_ns_intervals >> 32
@@ -123,20 +122,19 @@ def nt_to_unix(nt_timestamp_tuple, return_datetime=True):
 
     The timestamp is a 64bit count of 100ns intervals since the NT epoch
     broken into two 32bit longs, least significant first:
-    
+
     This method was changed 8/2023 to use integer math to compute the NT time from
     the provided datetime64 object to reduce errors introduced when using FP math.
     This change only applies when returning a datetime object.
-    
+
     '''
 
     lowDateTime, highDateTime = nt_timestamp_tuple
-    
+
     sec_past_nt_epoch = ((highDateTime << 32) + lowDateTime) * 1.0e-7
     us_past_nt_epoch = ((highDateTime << 32) + lowDateTime) // 10
 
     if return_datetime:
-        #return UTC_NT_EPOCH + datetime.timedelta(seconds=sec_past_nt_epoch)
         return UTC_NT_EPOCH + datetime.timedelta(microseconds=us_past_nt_epoch)
 
     else:
