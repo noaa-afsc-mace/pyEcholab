@@ -753,7 +753,7 @@ class EK60(object):
             #  to store this data.
             this_raw_data = None
             for raw_obj in self.raw_data[new_datagram['channel_id']]:
-
+                
                 if raw_obj.data_type == '':
                     #  This raw_data object has no type so is empty and can store anything
                     this_raw_data = raw_obj
@@ -2305,7 +2305,7 @@ class raw_data(ping_data):
 
 
     def get_Sv(self, calibration=None, linear=False, tvg_correction=True,
-               return_depth=False,  **kwargs):
+               return_depth=False, **kwargs):
         """Gets Sv data
 
         This method returns a processed_data object containing Sv or sv data.
@@ -3072,9 +3072,6 @@ class raw_data(ping_data):
             #range = (np.arange(-1, num_samples-1) + sample_offset) * thickness
 
             return range
-
-
-        print(drop_first_sample)
 
         # Check if the user supplied an explicit list of indices to return.
         if isinstance(return_indices, np.ndarray):

@@ -929,7 +929,7 @@ class EK80(object):
                                     elif not is_fm and raw_obj.data_type == 'complex-CW':
                                         this_raw_data = raw_obj
                                         break
-
+                                
                     #  check if we need to create a new raw_data object
                     if this_raw_data is None:
                         #  create the new raw_data object
@@ -2515,7 +2515,7 @@ class raw_data(ping_data):
         self.channel_mode[this_ping] = tx_parms['channel_mode']
         self.pulse_form[this_ping] = tx_parms['pulse_form']
         if tx_parms['pulse_form'] == 0:
-            # CW files will have the frequency parameter - well, except some
+            # CW files will have the frequency parameter - well, except some 
             # files which omit frequency and instead populate start/stop with
             # the same value.
             if 'frequency' in tx_parms:
@@ -2779,13 +2779,16 @@ class raw_data(ping_data):
         return p_data
 
 
-    def _complex_to_power(self, calibration, return_indices, return_angles=False,
+    def _get_complex_samples(self, calibration, return_indices, return_angles=False,
             pulse_compress=True, **kwargs):
-        '''_complex_to_power converts the complex data in the processed_data
-        object p_data to power. It will optionally compute and return electrical andgle
-        data.
+        '''_get_complex_samples returns a numpy array that contains the pulse compressed
+        complex data averaged over the transducer segments. It optionally returns
+        arrays containing the along and athwart electrical angles.
 
-        The methods below was derived from code provided by Lars Nonboe Andersen
+        This is an internal method. Call get_complex() if you want a processed_data
+        object containing complex data.
+
+        The methods below were derived from code provided by Lars Nonboe Andersen
         (Kongsberg Maritime) and information in the USA–Norway EK80 Workshop Report:
 
         Demer, D. A., Andersen, L. N., Bassett, C., Berger, L., Chu, D., Condiotty, J., Cutter, G.
@@ -2793,46 +2796,39 @@ class raw_data(ping_data):
         echosounder for fisheries and marine ecosystem science. ICES Cooperative Research
         Report No. 336. 69 pp. http://doi.org/10.17895/ices.pub.2318
 
+        And also from the following paper:
+
+        Andersen, L. N., Chu, D. Heimvoll, H, Korneliussen, R, Macaulay, G, Ona, E.
+        Patel R., & Pedersen G. (2021, Apr. 15). Quantitative processing of broadband data
+        as implemented in a scientific splitbeam echosounder. ArXiv.
+        https://doi.org/10.48550/arXiv.2104.07248
+
         '''
 
         # extract the fast keyword. If present - The fast keyword tells the pulse
         # compression function to assume the Tx params for all FM pings are constant
-        # and thus a single Tx signal is coputed and used for all conversions.
-        fast = kwargs.get('fast',False)
+        # and thus a single Tx signal is computed and used for all conversions.
+        fast = kwargs.get('fast', False)
 
         if pulse_compress:
-            # Pulse compress (this funtion has no effect on CW data)
+            # Pulse compress (this function has no effect on CW data)
             p_data = simrad_signal_proc.pulse_compression(self, calibration,
                 return_indices=return_indices, fast=fast)
-
-        # get the impedance values we need to convert to power
-        Zet = kwargs.pop('Zet', None)
-        if Zet is None:
-            # default transducer impedance (Demer et. al 2017 ICRR #336)
-            Zet = raw_data.ZTRANSDUCER
-        Zer = kwargs.pop('Zer', None)
-        if Zer is None:
-            if calibration.impedance and not np.isnan(calibration.impedance):
-                Zer = calibration.impedance
-            else:
-                # default receiver impedance (Demer et. al 2017 ICRR #336)
-                Zer = raw_data.ZTRANSCEIVER
-
-        # Determine the number of transducer sectors
-        n_sectors = p_data.shape[2]
+        else:
+            p_data = self.complex
 
         # Check if we're supposed to return angles
         if return_angles:
 
             #  get the unique beam type for all pings
             beam_type = np.unique(calibration.get_parameter(self,
-                    'transducer_beam_type',return_indices))
+                    'transducer_beam_type', return_indices))
 
             #  make sure every ping has the same type to keep it simple.
             #  You can implement something more complete if you need it.
             if beam_type.size > 1:
                 raise NotImplementedError('Angle conversion for arrays of mixed beam ' +
-                    'types is not suppored at this time. Beam types in data:' +
+                    'types is not supported at this time. Beam types in data:' +
                     ','.join(list(beam_type)))
             else:
                 beam_type = beam_type[0]
@@ -2879,20 +2875,78 @@ class raw_data(ping_data):
                 p_data_alongship = None
                 p_data_athwartship = None
 
-        # Compute power
-        Ur_t = np.mean(p_data, axis=2)
-        vrsplit = (Zer + Zet) / Zer
-        Per_t = (n_sectors * (np.abs(Ur_t) / (2 * np.sqrt(2)))**2 *
-                vrsplit**2 * 1 / Zet)
-        Per_t[Per_t == 0] = np.nan
-
-        # convert to log units
-        p_data = 10 * np.log10(Per_t)
+        # compute average signal over all transducer sectors
+        p_data = np.mean(p_data, axis=2)
 
         if return_angles:
             return (p_data, p_data_alongship, p_data_athwartship)
         else:
             return p_data
+
+
+    def _complex_to_power(self, calibration, return_indices, return_angles=False,
+            pulse_compress=True, **kwargs):
+        '''_complex_to_power converts the complex raw data to a numpy array containing
+        power data. It optionally returns arrays containing the along and athwart
+        electrical angles.
+
+        This is an internal method and is not intended to be called directly.
+
+        The methods below were derived from code provided by Lars Nonboe Andersen
+        (Kongsberg Maritime) and information in the USA–Norway EK80 Workshop Report:
+
+        Demer, D. A., Andersen, L. N., Bassett, C., Berger, L., Chu, D., Condiotty, J., Cutter, G.
+        R., et al. 2017. 2016 USA–Norway EK80 Workshop Report: Evaluation of a wideband
+        echosounder for fisheries and marine ecosystem science. ICES Cooperative Research
+        Report No. 336. 69 pp. http://doi.org/10.17895/ices.pub.2318
+
+        And also from the following paper:
+
+        Andersen, L. N., Chu, D. Heimvoll, H, Korneliussen, R, Macaulay, G, Ona, E.
+        Patel R., & Pedersen G. (2021, Apr. 15). Quantitative processing of broadband data
+        as implemented in a scientific splitbeam echosounder. ArXiv.
+        https://doi.org/10.48550/arXiv.2104.07248
+        '''
+
+        #  first get the pulse compressed and sector averaged complex data
+        if return_angles:
+            complex_data, angles_alongship, angles_athwartship = \
+                    self._get_complex_samples(calibration,return_indices,
+                    return_angles=True, pulse_compress=pulse_compress,
+                    **kwargs)
+        else:
+            complex_data = self._get_complex_samples(calibration,return_indices,
+                    return_angles=True, pulse_compress=pulse_compress,
+                    **kwargs)[0]
+
+        # get the impedance values we need to convert to power
+        Zet = kwargs.pop('Zet', None)
+        if Zet is None:
+            # default transducer impedance (Demer et. al 2017 ICRR #336)
+            Zet = raw_data.ZTRANSDUCER
+        Zer = kwargs.pop('Zer', None)
+        if Zer is None:
+            if calibration.impedance and not np.isnan(calibration.impedance):
+                Zer = calibration.impedance
+            else:
+                # default receiver impedance (Demer et. al 2017 ICRR #336)
+                Zer = raw_data.ZTRANSCEIVER
+
+        # Determine the number of transducer sectors
+        n_sectors = self.complex.shape[2]
+
+        # Compute power (from Demer, D. A. et. al.)
+        vrsplit = (Zer + Zet) / Zer
+        Prx = (n_sectors * (np.abs(complex_data) / (2 * np.sqrt(2)))**2 * vrsplit**2 * 1 / Zet)
+        Prx[Prx == 0] = 1e-20
+        
+        # convert to log units
+        complex_data = 10 * np.log10(Prx)
+
+        if return_angles:
+            return (complex_data, angles_alongship, angles_athwartship)
+        else:
+            return complex_data
 
 
     def _get_power(self, calibration=None, **kwargs):
@@ -2934,6 +2988,105 @@ class raw_data(ping_data):
         p_data.is_log = True
 
         return p_data, return_indices
+
+
+    def get_complex(self, **kwargs):
+
+
+        # This method is identical to _get_complex except we don't return the
+        # index array.
+        p_data, _ = self._get_complex(**kwargs)
+
+        return p_data
+        
+        
+    def _get_complex(self, calibration=None, return_depth=False,
+            clear_cache=True, **kwargs):
+                
+        # Check if user provided a cal object
+        if calibration is None:
+            # No - get one populated from raw data
+            calibration = self.get_calibration()
+
+        # Call the _get_sample_data method requesting the appropriate sample attribute.
+        if hasattr(self, 'complex'):
+            # get sector averaged complex data in a processed_data object
+            p_data, return_indices = self._get_sample_data('complex',
+                    calibration=calibration, **kwargs)
+        else:
+            raise AttributeError('Raw data object does not contain complex data.')
+
+        # Set the data type and is_log attribute.
+        p_data.data_type = 'complex'
+        p_data.is_log = False
+        
+        # Also create an attribute named after the data type that points to our data.
+        # Some people think their code is more readable when they use the this label.
+        setattr(p_data, p_data.data_type, p_data.data)
+
+
+        # Check if we need to convert to depth
+        if return_depth:
+            p_data.to_depth()
+
+        # check if we're clearing the cached intermediate data in the cal object
+        if clear_cache:
+            calibration.clear_cache()
+
+        return p_data, return_indices
+
+
+    def get_Svf(self, f_start, f_end, n_steps, calibration=None, linear=False,
+            return_depth=False, clear_cache=True, **kwargs):
+
+        
+        # Check if user provided a cal object
+        if calibration is None:
+            # No - get one populated from raw data
+            calibration = self.get_calibration()
+
+        #  create the return frequency vector 
+        f_range = np.linspace(f_start, f_end, n_steps)
+
+        # Get the sector averaged complex data
+        p_data, return_indices = self._get_complex(calibration=calibration,
+                return_depth=False, clear_cache=False, linear=True, **kwargs)
+
+        # Adjust for spherical loss
+        p_data.complex *= p_data.range
+        
+        # get the tx signal properties - these were created and cached when 
+        # _get_complex() was called above.
+        tx_data, tau_eff = simrad_signal_proc.create_ek80_tx(self,
+                calibration, return_pc=True, return_indices=return_indices,
+                **kwargs)
+
+        w_tilde_i, N_w, t_w, t_w_n = simrad_signal_proc.calc_hanning_window(raw_data,
+                calibration, return_indices=return_indices, **kwargs)
+
+        #  consider the use of np.vectorize
+
+
+
+
+
+
+#        # Set the data type and is_log attribute.
+#        if linear:
+#            attribute_name = 'sv'
+#            p_data.is_log = False
+#
+#        else:
+#            attribute_name = 'Sv'
+#            p_data.is_log = True
+#        p_data.data_type = attribute_name
+        
+        # check if we're clearing the cached intermediate data in the cal object
+        if clear_cache:
+            calibration.clear_cache()
+            
+
+        return w_tilde_i, N_w, t_w, t_w_n
 
 
     def get_sv(self, **kwargs):
@@ -3111,6 +3264,8 @@ class raw_data(ping_data):
         # Get the power data - this step also resamples and arranges the raw data.
         p_data, return_indices = self._get_power(calibration=calibration, **kwargs)
 
+        p_data.power = p_data.data
+
         # Set the data type and is_log attribute.
         if linear:
             attribute_name = 'sv'
@@ -3125,8 +3280,13 @@ class raw_data(ping_data):
         sv_data = self._convert_power(p_data, calibration, attribute_name,
                 linear, return_indices, tvg_correction)
 
-        # Set the data attribute in the processed_data object.
+        # Set the data attribute in the processed_data object. This is the generic
+        # label we use within pyEcholab to access data within processed data objects.
         p_data.data = sv_data
+        
+        # Also create an attribute named after the data type that points to our data.
+        # Some people think their code is more readable when they use the this label.
+        setattr(p_data, p_data.data_type, p_data.data)
 
         # Check if we need to convert to depth
         if return_depth:
@@ -3328,8 +3488,13 @@ class raw_data(ping_data):
         sp_data = self._convert_power(p_data, calibration, attribute_name,
                 linear, return_indices, tvg_correction)
 
-        # Set the data attribute in the processed_data object.
+        # Set the data attribute in the processed_data object. This is the generic
+        # label we use within pyEcholab to access data within processed data objects.
         p_data.data = sp_data
+        
+        # Also create an attribute named after the data type that points to our data.
+        # Some people think their code is more readable when they use the this label.
+        setattr(p_data, p_data.data_type, p_data.data)
 
         # Check if we need to convert to depth or heave correct.
         if return_depth:
@@ -3353,10 +3518,9 @@ class raw_data(ping_data):
         athwartship) containing the physical angle data if raw angle data is
         available.
 
-        For complex data types, this method only supports three sector transducers
-        and four sector transducers with equal sized sectors (i.e. quadrants).
-        This method does not support converting complex power to angles for
-        four sector transducers with 3 outer sectors and a single center sector.
+        For complex data types, this method supports transducers with three sectors,
+        four sectors (as quadrants) and four sector transducers with 3 outer sectors
+        and a center sector.
 
         This method performs all of the required transformations to place the
         raw electrical angle data into rectangular arrays where all samples
@@ -3366,14 +3530,14 @@ class raw_data(ping_data):
         Args:
             return_indices (np.array uint32): Set this to a numpy array that contains
                 the index values to return in the processed data object. This can be
-                used for more advanced anipulations where start/end ping/time are
+                used for more advanced manipulations where start/end ping/time are
                 inadequate.
 
             calibration (EK80.ek80_calibration): Set to an instance of
                 EK80.ek80_calibration containing the calibration parameters
-                you want to use when transforming to Sv/sv. If no calibration
-                object is provided, the values will be extracted from the raw
-                data.
+                you want to use when transforming to physical angles. If no
+                calibration object is provided, the values will be extracted from
+                the raw data.
 
             clear_cache (bool): Set to True to clear out intermediate data cached
                 in the calibration object during conversion. In order to speed up
@@ -3438,11 +3602,7 @@ class raw_data(ping_data):
         cal_parms = {'angle_sensitivity_alongship':None,
                      'angle_sensitivity_athwartship':None,
                      'angle_offset_alongship':None,
-                     'angle_offset_athwartship':None,
-                     'frequency':None,
-                     'frequency_start':None,
-                     'frequency_end':None,
-                     'transducer_frequency':None}
+                     'angle_offset_athwartship':None}
 
         # Next, iterate through the dict, calling the method to extract the
         # values for each parameter.
@@ -3450,25 +3610,20 @@ class raw_data(ping_data):
             cal_parms[key] = calibration.get_parameter(self, key,
                     return_indices)
 
-        # Adjust sensitivities for FM
-        if cal_parms['frequency'] is None:
-            fc = (cal_parms['frequency_start'] + cal_parms['frequency_end']) / 2
-            fc /= cal_parms['transducer_frequency']
-            sens_along = cal_parms['angle_sensitivity_alongship'] * fc
-            sens_athwart = cal_parms['angle_sensitivity_athwartship'] * fc
-        else:
-            sens_along = cal_parms['angle_sensitivity_alongship']
-            sens_athwart = cal_parms['angle_sensitivity_athwartship']
-
         # Compute the physical angles.
-        alongship.data /= sens_along[:, np.newaxis]
+        alongship.data /= cal_parms['angle_sensitivity_alongship'][:, np.newaxis]
         alongship.data -= cal_parms['angle_offset_alongship'][:, np.newaxis]
-        athwartship.data /= sens_athwart[:, np.newaxis]
+        athwartship.data /= cal_parms['angle_sensitivity_athwartship'][:, np.newaxis]
         athwartship.data -= cal_parms['angle_offset_athwartship'][:,np.newaxis]
 
         # Set the data types.
         alongship.data_type = 'angles_alongship'
         athwartship.data_type = 'angles_athwartship'
+
+        # Also create an attribute named after the data type that points to our data.
+        # Some people think their code is more readable when they use the this label.
+        setattr(alongship, alongship.data_type, alongship.data)
+        setattr(athwartship, athwartship.data_type, athwartship.data)
 
         # We do not need to convert to depth here since the electrical_angle
         # data will already have been converted to depth if requested.
@@ -3905,6 +4060,24 @@ class raw_data(ping_data):
                 # transform complex data to power
                 raw_power = self._complex_to_power(calibration, return_indices, **kwargs)
                 data_refs.append(raw_power)
+            elif property_name == 'power+angles_e':
+                # transform complex data to power
+                raw_power, raw_along_e, raw_athwart_e = self._complex_to_power(calibration, return_indices,
+                        return_angles=True, **kwargs)
+                data_refs.append(raw_power)
+                data_refs.append(raw_along_e)
+                data_refs.append(raw_athwart_e)
+            elif property_name == 'complex':
+                # transform complex data to sector averaged complex
+                raw_complex = self._get_complex_samples(calibration, return_indices, **kwargs)
+                data_refs.append(raw_complex)
+            elif property_name == 'complex+angles_e':
+                # transform complex data to power
+                raw_complex, raw_along_e, raw_athwart_e = self._get_complex_samples(calibration, return_indices,
+                        return_angles=True, **kwargs)
+                data_refs.append(raw_complex)
+                data_refs.append(raw_along_e)
+                data_refs.append(raw_athwart_e)
             elif property_name == 'angles_e':
                 # transform complex data to angles
                 _, raw_along_e, raw_athwart_e = self._complex_to_power(calibration, return_indices,
@@ -3913,15 +4086,31 @@ class raw_data(ping_data):
                 data_refs.append(raw_athwart_e)
         else:
             # No complex data - this is reduced data
-            if property_name == 'power' and hasattr(self, 'power'):
-                data_refs.append(getattr(self, property_name))
-            elif (property_name == 'angles_e' and hasattr(self, 'angles_alongship_e') and
-                hasattr(self, 'angles_athwartship_e')):
+            has_power = hasattr(self, 'power')
+            has_angles = (hasattr(self, 'angles_alongship_e') and
+                hasattr(self, 'angles_athwartship_e'))
+            
+            if property_name == 'power':
+                if has_power:
+                    data_refs.append(getattr(self, property_name))
+                else:
+                    raise AttributeError("Unable to convert raw sample data. The raw_data " + 
+                            "object is missing the power attribute.")
+            elif (property_name == 'angles_e'):
+                if has_angles:
                     data_refs.append(getattr(self, 'angles_alongship_e'))
                     data_refs.append(getattr(self, 'angles_athwartship_e'))
-            else:
-                raise AttributeError("Unable to convert raw sample data. The attribute name " +
-                        property_name + " does not exist.")
+                else:
+                    raise AttributeError("Unable to convert raw sample data. The raw_data " + 
+                            "object is missing one or both of the angles attribute.")
+            elif (property_name == 'power+angles_e'):
+                if has_angles and has_power:
+                    data_refs.append(getattr(self, property_name))
+                    data_refs.append(getattr(self, 'angles_alongship_e'))
+                    data_refs.append(getattr(self, 'angles_athwartship_e'))
+                else:
+                    raise AttributeError("Unable to convert raw sample data. The raw_data " + 
+                            "object is missing one or more of the power or angle attributes.")
 
         # Populate the calibration parameters required for this method.
         # First, create a dict with key names that match the attributes names
@@ -3944,7 +4133,7 @@ class raw_data(ping_data):
         unique_sample_offsets = np.unique(
             cal_parms['sample_offset'][~np.isnan(cal_parms['sample_offset'])])
         min_sample_offset = min(unique_sample_offsets)
-
+        
         # Check if we need to resample our sample data.
         unique_sample_interval = np.unique(
             cal_parms['sample_interval'][~np.isnan(cal_parms['sample_interval'])])
@@ -4121,7 +4310,7 @@ class raw_data(ping_data):
             linear (bool):  Set to True to return linear values.
             return_indices (array): A numpy array of indices to return.
             tvg_correction (bool): Set to True to apply a correction to the
-                range of (2 * sample thickness) for GPTs and
+                range of (2 * sample thickness) for GPTs and 
                 (sound speed * transmitted pulse length / 4) for WBTs.
 
         Returns:
@@ -4178,7 +4367,7 @@ class raw_data(ping_data):
         is_fm = cal_parms['pulse_form'] > 0
         B_theta_phi_m[is_fm] = (0.5 * 6.0206 *
                 ((np.abs(theta - cal_parms['angle_offset_alongship'][is_fm]) /
-                (cal_parms['beam_width_alongship'][is_fm] / 2)) ** 2 +
+                (cal_parms['beam_width_alongship'][is_fm] / 2)) ** 2 + 
                 (np.abs(phi - cal_parms['angle_offset_athwartship'][is_fm]) /
                 (cal_parms['beam_width_athwartship'][is_fm] / 2)) ** 2 -
                 0.18 * ((np.abs(theta - cal_parms['angle_offset_alongship'][is_fm])) /
@@ -4186,7 +4375,7 @@ class raw_data(ping_data):
                 (np.abs(phi - cal_parms['angle_offset_athwartship'][is_fm]) /
                 (cal_parms['beam_width_athwartship'][is_fm] / 2)) ** 2))
         B_theta_phi_m[is_fm] = 10**(B_theta_phi_m[is_fm] / 10)
-
+        
         #  convert transceiver gain to linear units
         transceiver_gain = 10**(cal_parms['gain'] / 10)
 
@@ -4237,7 +4426,7 @@ class raw_data(ping_data):
         # Subtract the system gains.
         data -= gains[:, np.newaxis]
 
-        # Apply sa correction for non FM Sv/sv.
+        # Apply sa correction for non FM Sv/sv. 
         if convert_to in ['sv','Sv']:
             # Only apply to CW data
             not_fm = cal_parms['pulse_form'] == 0
@@ -4543,8 +4732,11 @@ class ek80_calibration(calibration):
         Args:
             raw_data (raw_data): The object where parameters will be extracted
                 from and used to populate the calibration object.
-            return_indices (array): A numpy array of indices to return.
+            return_indices (array): A numpy array of indices to return cal
+                values for.
         """
+
+
 
         #  call the parent method
         super(ek80_calibration, self).from_raw_data(raw_data,
@@ -4556,6 +4748,20 @@ class ek80_calibration(calibration):
         # stores the bits needed to compute it.
         self.absorption_coefficient = self._compute_absorption(raw_data,
             return_indices, self.absorption_method)
+
+#TODO: The call to get the effective pulse duration will ultimately call
+#      simrad_signal_proc.create_ek80_tx. This method has the "fast" keyword which
+#      assumes that all pings share the same transmit parameters and so it will
+#      only compute values for the first ping and subsequent computations will
+#      use those same values, this limits some of the computations and memory
+#      needed to store them. Currently "fast" is not exposed thru this method
+#      so none of this actually happens.
+#      In order to implement this correctly, the fast keyword has to be exposed
+#      in ek80.get_calibration OR, better yet, it should be set automatically
+#      if all the pings share the same relevant params which should be determined
+#      when the bulk of the parameters are extracted in ek80_calibration.from_raw_data()
+#      Testing will then need to ensure that the cached data are broadcast correctly
+#      when computing results.
 
         self.effective_pulse_duration = self.get_attribute_from_raw(raw_data,
                 param_name='effective_pulse_duration', return_indices=return_indices)
@@ -4584,7 +4790,7 @@ class ek80_calibration(calibration):
             if param_data is None or np.isnan(param_data):
                 param_data = self.default_acidity
 
-        # older file formats also lack rx_sample_frequency
+        # older file formats also lack rx_sample_frequency 
         elif param_name == 'rx_sample_frequency':
             #  create the return array
             param_data = np.empty((return_indices.shape[0]), dtype=np.float32)
@@ -4651,17 +4857,17 @@ class ek80_calibration(calibration):
 
                         # Compute an adjusted gain based on the center frequency of the broadband signal
                         # and the nominal frequency of the transducer.
-                        new_data[idx] = gain + (20 * np.log10(frequency[idx] /
+                        new_data[idx] = gain + (20 * np.log10(frequency[idx] / 
                                 config_obj['transducer_frequency']))
                 else:
                     # CW gain is obtained from the gain table that is indexed by pulse duration
                     if param_data.ndim == 1:
-                        new_data[idx] = (param_data[config_obj['pulse_duration'] ==
+                        new_data[idx] = (param_data[config_obj['pulse_duration'] == 
                                 raw_data.pulse_duration[idx]][0])
                     else:
                         new_data[idx] = (param_data[idx, config_obj['pulse_duration'] ==
                                 raw_data.pulse_duration[idx]][0])
-
+                                
             param_data = new_data
 
         #  similar to gain, the angle offset and beamwidth params for calibrated FM data
@@ -4669,7 +4875,7 @@ class ek80_calibration(calibration):
         #  values are taken from the configuration header.
         elif param_name in ['angle_offset_alongship', 'angle_offset_athwartship',
                             'beam_width_alongship', 'beam_width_athwartship']:
-
+                                
             # initialize the return array
             new_data = np.empty((return_indices.shape[0]), dtype=np.float32)
 
@@ -4702,13 +4908,13 @@ class ek80_calibration(calibration):
         #  again for angle sensitivities
         elif param_name in ['angle_sensitivity_alongship',
                 'angle_sensitivity_athwartship']:
-
+                                
             # initialize the return array
             new_data = np.empty((return_indices.shape[0]), dtype=np.float32)
 
             # Get the frequency - this returns the center freq for FM
             frequency = raw_data.get_frequency()
-
+            
             # Work thru the pings, extracting the params
             for idx, config_obj in enumerate(raw_data.configuration[return_indices]):
                 #  check if this is an FM ping
@@ -4766,6 +4972,23 @@ class ek80_calibration(calibration):
 
 
         return param_data
+
+
+    def clear_cache(self):
+        '''clear_cache clears the most recently computed transmit signals, effective
+        pulse durations, and other data used when transforming raw sample data.
+        '''
+
+        if hasattr(self, '_tx_signal'):
+            delattr(self, '_tx_signal')
+        if hasattr(self, '_tau_eff'):
+            delattr(self, '_tau_eff')
+        if hasattr(self, '_y_t'):
+            delattr(self, '_y_t')
+        if hasattr(self, '_rx_sample_frequency_decimated'):
+            delattr(self, '_rx_sample_frequency_decimated')
+        if hasattr(self, '_pulse_duration'):
+            delattr(self, '_pulse_duration')
 
 
     def __str__(self):
