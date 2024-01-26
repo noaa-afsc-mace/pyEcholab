@@ -929,7 +929,7 @@ class EK80(object):
                                     elif not is_fm and raw_obj.data_type == 'complex-CW':
                                         this_raw_data = raw_obj
                                         break
-                                
+
                     #  check if we need to create a new raw_data object
                     if this_raw_data is None:
                         #  create the new raw_data object
@@ -2515,7 +2515,7 @@ class raw_data(ping_data):
         self.channel_mode[this_ping] = tx_parms['channel_mode']
         self.pulse_form[this_ping] = tx_parms['pulse_form']
         if tx_parms['pulse_form'] == 0:
-            # CW files will have the frequency parameter - well, except some 
+            # CW files will have the frequency parameter - well, except some
             # files which omit frequency and instead populate start/stop with
             # the same value.
             if 'frequency' in tx_parms:
@@ -2939,7 +2939,7 @@ class raw_data(ping_data):
         vrsplit = (Zer + Zet) / Zer
         Prx = (n_sectors * (np.abs(complex_data) / (2 * np.sqrt(2)))**2 * vrsplit**2 * 1 / Zet)
         Prx[Prx == 0] = 1e-20
-        
+
         # convert to log units
         complex_data = 10 * np.log10(Prx)
 
@@ -2998,11 +2998,11 @@ class raw_data(ping_data):
         p_data, _ = self._get_complex(**kwargs)
 
         return p_data
-        
-        
+
+
     def _get_complex(self, calibration=None, return_depth=False,
             clear_cache=True, **kwargs):
-                
+
         # Check if user provided a cal object
         if calibration is None:
             # No - get one populated from raw data
@@ -3019,7 +3019,7 @@ class raw_data(ping_data):
         # Set the data type and is_log attribute.
         p_data.data_type = 'complex'
         p_data.is_log = False
-        
+
         # Also create an attribute named after the data type that points to our data.
         # Some people think their code is more readable when they use the this label.
         setattr(p_data, p_data.data_type, p_data.data)
@@ -3039,13 +3039,13 @@ class raw_data(ping_data):
     def get_Svf(self, f_start, f_end, n_steps, calibration=None, linear=False,
             return_depth=False, clear_cache=True, **kwargs):
 
-        
+
         # Check if user provided a cal object
         if calibration is None:
             # No - get one populated from raw data
             calibration = self.get_calibration()
 
-        #  create the return frequency vector 
+        #  create the return frequency vector
         f_range = np.linspace(f_start, f_end, n_steps)
 
         # Get the sector averaged complex data
@@ -3054,8 +3054,8 @@ class raw_data(ping_data):
 
         # Adjust for spherical loss
         p_data.complex *= p_data.range
-        
-        # get the tx signal properties - these were created and cached when 
+
+        # get the tx signal properties - these were created and cached when
         # _get_complex() was called above.
         tx_data, tau_eff = simrad_signal_proc.create_ek80_tx(self,
                 calibration, return_pc=True, return_indices=return_indices,
@@ -3080,11 +3080,11 @@ class raw_data(ping_data):
 #            attribute_name = 'Sv'
 #            p_data.is_log = True
 #        p_data.data_type = attribute_name
-        
+
         # check if we're clearing the cached intermediate data in the cal object
         if clear_cache:
             calibration.clear_cache()
-            
+
 
         return w_tilde_i, N_w, t_w, t_w_n
 
@@ -3283,7 +3283,7 @@ class raw_data(ping_data):
         # Set the data attribute in the processed_data object. This is the generic
         # label we use within pyEcholab to access data within processed data objects.
         p_data.data = sv_data
-        
+
         # Also create an attribute named after the data type that points to our data.
         # Some people think their code is more readable when they use the this label.
         setattr(p_data, p_data.data_type, p_data.data)
@@ -3491,7 +3491,7 @@ class raw_data(ping_data):
         # Set the data attribute in the processed_data object. This is the generic
         # label we use within pyEcholab to access data within processed data objects.
         p_data.data = sp_data
-        
+
         # Also create an attribute named after the data type that points to our data.
         # Some people think their code is more readable when they use the this label.
         setattr(p_data, p_data.data_type, p_data.data)
@@ -4089,19 +4089,19 @@ class raw_data(ping_data):
             has_power = hasattr(self, 'power')
             has_angles = (hasattr(self, 'angles_alongship_e') and
                 hasattr(self, 'angles_athwartship_e'))
-            
+
             if property_name == 'power':
                 if has_power:
                     data_refs.append(getattr(self, property_name))
                 else:
-                    raise AttributeError("Unable to convert raw sample data. The raw_data " + 
+                    raise AttributeError("Unable to convert raw sample data. The raw_data " +
                             "object is missing the power attribute.")
             elif (property_name == 'angles_e'):
                 if has_angles:
                     data_refs.append(getattr(self, 'angles_alongship_e'))
                     data_refs.append(getattr(self, 'angles_athwartship_e'))
                 else:
-                    raise AttributeError("Unable to convert raw sample data. The raw_data " + 
+                    raise AttributeError("Unable to convert raw sample data. The raw_data " +
                             "object is missing one or both of the angles attribute.")
             elif (property_name == 'power+angles_e'):
                 if has_angles and has_power:
@@ -4109,7 +4109,7 @@ class raw_data(ping_data):
                     data_refs.append(getattr(self, 'angles_alongship_e'))
                     data_refs.append(getattr(self, 'angles_athwartship_e'))
                 else:
-                    raise AttributeError("Unable to convert raw sample data. The raw_data " + 
+                    raise AttributeError("Unable to convert raw sample data. The raw_data " +
                             "object is missing one or more of the power or angle attributes.")
 
         # Populate the calibration parameters required for this method.
@@ -4133,7 +4133,7 @@ class raw_data(ping_data):
         unique_sample_offsets = np.unique(
             cal_parms['sample_offset'][~np.isnan(cal_parms['sample_offset'])])
         min_sample_offset = min(unique_sample_offsets)
-        
+
         # Check if we need to resample our sample data.
         unique_sample_interval = np.unique(
             cal_parms['sample_interval'][~np.isnan(cal_parms['sample_interval'])])
@@ -4310,7 +4310,7 @@ class raw_data(ping_data):
             linear (bool):  Set to True to return linear values.
             return_indices (array): A numpy array of indices to return.
             tvg_correction (bool): Set to True to apply a correction to the
-                range of (2 * sample thickness) for GPTs and 
+                range of (2 * sample thickness) for GPTs and
                 (sound speed * transmitted pulse length / 4) for WBTs.
 
         Returns:
@@ -4367,7 +4367,7 @@ class raw_data(ping_data):
         is_fm = cal_parms['pulse_form'] > 0
         B_theta_phi_m[is_fm] = (0.5 * 6.0206 *
                 ((np.abs(theta - cal_parms['angle_offset_alongship'][is_fm]) /
-                (cal_parms['beam_width_alongship'][is_fm] / 2)) ** 2 + 
+                (cal_parms['beam_width_alongship'][is_fm] / 2)) ** 2 +
                 (np.abs(phi - cal_parms['angle_offset_athwartship'][is_fm]) /
                 (cal_parms['beam_width_athwartship'][is_fm] / 2)) ** 2 -
                 0.18 * ((np.abs(theta - cal_parms['angle_offset_alongship'][is_fm])) /
@@ -4375,7 +4375,7 @@ class raw_data(ping_data):
                 (np.abs(phi - cal_parms['angle_offset_athwartship'][is_fm]) /
                 (cal_parms['beam_width_athwartship'][is_fm] / 2)) ** 2))
         B_theta_phi_m[is_fm] = 10**(B_theta_phi_m[is_fm] / 10)
-        
+
         #  convert transceiver gain to linear units
         transceiver_gain = 10**(cal_parms['gain'] / 10)
 
@@ -4426,7 +4426,7 @@ class raw_data(ping_data):
         # Subtract the system gains.
         data -= gains[:, np.newaxis]
 
-        # Apply sa correction for non FM Sv/sv. 
+        # Apply sa correction for non FM Sv/sv.
         if convert_to in ['sv','Sv']:
             # Only apply to CW data
             not_fm = cal_parms['pulse_form'] == 0
@@ -4790,7 +4790,7 @@ class ek80_calibration(calibration):
             if param_data is None or np.isnan(param_data):
                 param_data = self.default_acidity
 
-        # older file formats also lack rx_sample_frequency 
+        # older file formats also lack rx_sample_frequency
         elif param_name == 'rx_sample_frequency':
             #  create the return array
             param_data = np.empty((return_indices.shape[0]), dtype=np.float32)
@@ -4857,17 +4857,17 @@ class ek80_calibration(calibration):
 
                         # Compute an adjusted gain based on the center frequency of the broadband signal
                         # and the nominal frequency of the transducer.
-                        new_data[idx] = gain + (20 * np.log10(frequency[idx] / 
+                        new_data[idx] = gain + (20 * np.log10(frequency[idx] /
                                 config_obj['transducer_frequency']))
                 else:
                     # CW gain is obtained from the gain table that is indexed by pulse duration
                     if param_data.ndim == 1:
-                        new_data[idx] = (param_data[config_obj['pulse_duration'] == 
+                        new_data[idx] = (param_data[config_obj['pulse_duration'] ==
                                 raw_data.pulse_duration[idx]][0])
                     else:
                         new_data[idx] = (param_data[idx, config_obj['pulse_duration'] ==
                                 raw_data.pulse_duration[idx]][0])
-                                
+
             param_data = new_data
 
         #  similar to gain, the angle offset and beamwidth params for calibrated FM data
@@ -4875,7 +4875,7 @@ class ek80_calibration(calibration):
         #  values are taken from the configuration header.
         elif param_name in ['angle_offset_alongship', 'angle_offset_athwartship',
                             'beam_width_alongship', 'beam_width_athwartship']:
-                                
+
             # initialize the return array
             new_data = np.empty((return_indices.shape[0]), dtype=np.float32)
 
@@ -4908,13 +4908,13 @@ class ek80_calibration(calibration):
         #  again for angle sensitivities
         elif param_name in ['angle_sensitivity_alongship',
                 'angle_sensitivity_athwartship']:
-                                
+
             # initialize the return array
             new_data = np.empty((return_indices.shape[0]), dtype=np.float32)
 
             # Get the frequency - this returns the center freq for FM
             frequency = raw_data.get_frequency()
-            
+
             # Work thru the pings, extracting the params
             for idx, config_obj in enumerate(raw_data.configuration[return_indices]):
                 #  check if this is an FM ping
