@@ -1295,6 +1295,12 @@ class EK80(object):
                 your main application thread allowing the application to
                 display the read progress.
 
+            async_window (int): Set this to an integer specifying the number of
+                seconds to expand the NMEA data window on either side of the raw
+                data. If available, NMEA data will be written up to this many
+                seconds before, and after the raw data ensuring that the first
+                and last pings are bracketed by GPS, VLW, etc.
+
             The following keywords are for advanced indexing and writing of the
             data. This can allow you to easily write subsets of data where the
             pings do not have to be contiguous.
@@ -1588,7 +1594,7 @@ class EK80(object):
             # Determine the data time window
             raw_start_time = dg_times[0]
             async_start_time = dg_times[0] - async_window_secs
-            async_end_time = dg_times[-1] - async_window_secs
+            async_end_time = dg_times[-1] + async_window_secs
 
             # Get the unique environment datagrams - we can use the reference to the
             # last data object in the last channel that exists after adding the raw
@@ -4735,8 +4741,6 @@ class ek80_calibration(calibration):
             return_indices (array): A numpy array of indices to return cal
                 values for.
         """
-
-
 
         #  call the parent method
         super(ek80_calibration, self).from_raw_data(raw_data,

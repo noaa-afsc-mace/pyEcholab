@@ -167,7 +167,7 @@ class nmea_data(object):
 
         Args:
             message_types (list): List of NMEA-0183 message types to remove.
-                (e.g. 'GGA', 'GLL', 'RMC', 'HDT') 
+                (e.g. 'GGA', 'GLL', 'RMC', 'HDT')
             start_time (datetime or datetime64): Define the starting time of
                 the data to remove. If None, data are remove starting with
                 first time.
@@ -177,7 +177,7 @@ class nmea_data(object):
                 specific talker. For example, you could set it to "IN" to
                 only remove data from a POS-MV system. When set to None,
                 the talker ID is ignored.
-            
+
         Returns: None
 
         """
@@ -190,40 +190,52 @@ class nmea_data(object):
         if isinstance(message_types, str):
             message_types = [message_types]
 
-        # Get the index for all datagrams within the time span and convert to a mask. 
+        # Get the index for all datagrams within the time span and convert to a mask.
         time_idxs = self.get_indices(start_time=start_time,
             end_time=end_time)
         time_mask = np.full((self.messages.shape[0]), False)
         time_mask[time_idxs] = True
-    
+
         # create the initial remove mask
         remove_mask = np.full((self.messages.shape[0]), False)
-    
+
         # loop thru the provided message types to remove
         for msg_type in message_types:
             msg_type = msg_type.upper()
 
-            # Build a mask to remove this message type and talker ID 
+            # Build a mask to remove this message type and talker ID
             this_mask = self.messages[time_mask] == msg_type
             if talker_id:
                 this_mask &= self.talkers[time_mask] == talker_id
 
             # Apply the mask to the overall mask
             remove_mask |= this_mask
-            
+
         # Now we have a mask that identifies all messages to remove.
         # Use the inverse of that to index messages to keep.
         self.raw_datagrams = self.raw_datagrams[~remove_mask]
         self.nmea_times = self.nmea_times[~remove_mask]
         self.talkers = self.talkers[~remove_mask]
         self.messages = self.messages[~remove_mask]
-        
+
         # Now clean up the message IDs and talker IDs lists.
         #
         #  Credit to StackExchange user @rlat for this solution
         #    https://stackoverflow.com/questions/12897374/get-unique-values-from-a-list-in-python
         self.message_ids = list(dict.fromkeys(self.messages))
-        self.talkers = list(dict.fromkeys(self.talkers)) 
+        self.talkers = list(dict.fromkeys(self.talkers))
+
+        #  update the n_raw attribute
+        self.n_raw = len(self.raw_datagrams)
+
+        #  if all datagrams have been removed, we need to recreate the talkers array since
+        #  it weirdly loses its type when everything is removed from it. The other arrays
+        #  seem to be fine.
+        if self.n_raw == 0:
+            #self.raw_datagrams = np.array([], dtype=object)
+            #self.nmea_times = np.array([], dtype='datetime64[ms]')
+            self.talkers = np.array([], dtype='U2')
+            #self.messages = np.array([], dtype='U3')
 
 
     def get_datagrams(self, message_types, start_time=None, end_time=None,
@@ -438,12 +450,12 @@ class nmea_data(object):
                                           end_time=end_time,
                                           talker_id=talker_id,
                                           return_fields=interp_fields)
-        
+
         # Check if we have any data to return
         has_data = False
         for msg_type in message_data:
             has_data |= message_data[msg_type]['time'] is not None
-            
+
         if has_data:
             # Create the dictionary to return and fill
             out_data = {}
@@ -500,7 +512,7 @@ class nmea_data(object):
         else:
             #  there is no NMEA data for this message_type
             out_data = None
-            
+
         return (interp_fields, out_data)
 
 

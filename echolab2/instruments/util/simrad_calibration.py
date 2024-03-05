@@ -89,7 +89,8 @@ class calibration(object):
         '''
 
         #  create a dict to map ECS variables to Echolab cal object properties
-        #  A few mappings may be updated in the child class init.
+        #  Mappings that share the same key but have different values are updated in the
+        #  child class init (e.g. ek80.ek80_calibration and e60.ek60_calibration)
         self.ECS_ECHOLAB_MAP = {'AbsorptionCoefficient':'absorption_coefficient',
                                 'AbsorptionDepth':'depth',
                                 'Acidity':'acidity',
@@ -112,7 +113,9 @@ class calibration(object):
                                 'TransmittedPower':'transmit_power',
                                 'TransmittedPulseLength':'pulse_length',
                                 'TvgRangeCorrection':'tvg_range_correction',
-                                'TwoWayBeamAngle':'equivalent_beam_angle'}
+                                'TwoWayBeamAngle':'equivalent_beam_angle',
+                                'Ek60TransducerGain':'gain',
+                                'SaCorrectionFactor':'sa_correction'}
 
         # Set the initial calibration property values.
         self.channel_id = None

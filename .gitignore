@@ -152,3 +152,6 @@ echolab2/processing/processed_data_MS2.py
 examples/plot_single_ping_ES60.py
 examples/not_updated/read_out.py
 test/ek80_z_offset_bug_test_2.py
+test/interleave_test.py
+test/loadfile.py
+test/vlw_from_idx_to_raw.py
