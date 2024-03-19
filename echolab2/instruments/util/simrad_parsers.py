@@ -582,34 +582,34 @@ class SimradMRUParser(_SimradDatagramParser):
 
     Version 1 contains (from https://www3.mbari.org/products/mbsystem/formatdoc/KongsbergKmall/EMdgmFormat_RevH/html/kmBinary.html):
 
-    Status word	See 1)	uint32	4U
-    Latitude	deg	double	8F
-    Longitude	deg	double	8F
-    Ellipsoid height	m	float	4F
-    Roll	deg	float	4F
-    Pitch	deg	float	4F
-    Heading	deg	float	4F
-    Heave	m	float	4F
-    Roll rate	deg/s	float	4F
-    Pitch rate	deg/s	float	4F
-    Yaw rate	deg/s	float	4F
-    North velocity	m/s	float	4F
-    East velocity	m/s	float	4F
-    Down velocity	m/s	float	4F
-    Latitude error	m	float	4F
-    Longitude error	m	float	4F
-    Height error	m	float	4F
-    Roll error	deg	float	4F
-    Pitch error	deg	float	4F
-    Heading error	deg	float	4F
-    Heave error	m	float	4F
-    North acceleration	m/s2	float	4F
-    East acceleration	m/s2	float	4F
-    Down acceleration	m/s2	float	4F
-    Delayed heave:	-	-	-
-    UTC seconds	s	uint32	4U
-    UTC nanoseconds	ns	uint32	4U
-    Delayed heave	m	float	4F
+    Status word See 1)  uint32  4U
+    Latitude    deg double  8F
+    Longitude   deg double  8F
+    Ellipsoid height    m   float   4F
+    Roll    deg float   4F
+    Pitch   deg float   4F
+    Heading deg float   4F
+    Heave   m   float   4F
+    Roll rate   deg/s   float   4F
+    Pitch rate  deg/s   float   4F
+    Yaw rate    deg/s   float   4F
+    North velocity  m/s float   4F
+    East velocity   m/s float   4F
+    Down velocity   m/s float   4F
+    Latitude error  m   float   4F
+    Longitude error m   float   4F
+    Height error    m   float   4F
+    Roll error  deg float   4F
+    Pitch error deg float   4F
+    Heading error   deg float   4F
+    Heave error m   float   4F
+    North acceleration  m/s2    float   4F
+    East acceleration   m/s2    float   4F
+    Down acceleration   m/s2    float   4F
+    Delayed heave:  -   -   -
+    UTC seconds s   uint32  4U
+    UTC nanoseconds ns  uint32  4U
+    Delayed heave   m   float   4F
 
     The following methods are defined:
 
@@ -635,7 +635,7 @@ class SimradMRUParser(_SimradDatagramParser):
                        ('status_word', 'L'),
                        ('dummy', '12s'),
                        ('latitude', 'd'),
-                       ('longtitude', 'd'),
+                       ('longitude', 'd'),
                        ('ellipsoid_height', 'f'),
                        ('roll', 'f'),
                        ('pitch', 'f'),
@@ -648,7 +648,7 @@ class SimradMRUParser(_SimradDatagramParser):
                        ('velocity_east', 'f'),
                        ('velocity_down', 'f'),
                        ('latitude_error', 'f'),
-                       ('longtitude_error', 'f'),
+                       ('longitude_error', 'f'),
                        ('height_error', 'f'),
                        ('roll_error', 'f'),
                        ('pitch_error', 'f'),
@@ -657,9 +657,9 @@ class SimradMRUParser(_SimradDatagramParser):
                        ('accel_north', 'f'),
                        ('accel_east', 'f'),
                        ('accel_down', 'f'),
-                       ('heave_delay_high', 'L'),
-                       ('heave_delay_low', 'L'),
-                       ('heave_delayed', 'f')]
+                       ('heave_delay_secs', 'L'),
+                       ('heave_delay_usecs', 'L'),
+                       ('heave_delay_m', 'f')]
                    }
 
         _SimradDatagramParser.__init__(self, "MRU", headers)

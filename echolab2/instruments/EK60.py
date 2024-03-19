@@ -753,7 +753,7 @@ class EK60(object):
             #  to store this data.
             this_raw_data = None
             for raw_obj in self.raw_data[new_datagram['channel_id']]:
-                
+
                 if raw_obj.data_type == '':
                     #  This raw_data object has no type so is empty and can store anything
                     this_raw_data = raw_obj
@@ -801,9 +801,7 @@ class EK60(object):
                     end_sample=self.read_end_sample)
 
             # Store the motion data in the motion data object
-            self.motion_data.add_datagram(new_datagram['timestamp'],
-                    new_datagram['heave'], new_datagram['pitch'],
-                    new_datagram['roll'], new_datagram['heading'])
+            self.motion_data.add_datagram(new_datagram)
 
         # NME datagrams store ancillary data as NMEA-0183 style ASCII data.
         elif new_datagram['type'].startswith('NME'):

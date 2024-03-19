@@ -963,9 +963,7 @@ class EK80(object):
 
                     #  if this is an ES80 RAW0 datagram we need to extract the motion data
                     if new_datagram['type'][3] == '0':
-                        self.motion_data.add_datagram(new_datagram['timestamp'],
-                            new_datagram['heave'], new_datagram['pitch'],
-                            new_datagram['roll'], new_datagram['heading'])
+                        self.motion_data.add_datagram(new_datagram)
 
                 elif new_datagram['type'][3] == '4':
                     # RAW4 datagrams are only generated when saving reduced sample data
@@ -1020,9 +1018,7 @@ class EK80(object):
         # MRU datagrams contain vessel motion data
         elif new_datagram['type'].startswith('MRU'):
             # append this motion datagram to the motion_data object
-            self.motion_data.add_datagram(new_datagram['timestamp'],
-                    new_datagram['heave'], new_datagram['pitch'],
-                    new_datagram['roll'], new_datagram['heading'])
+            self.motion_data.add_datagram(new_datagram)
 
         # BOT datagrams contain bottom detections
         elif new_datagram['type'].startswith('BOT'):

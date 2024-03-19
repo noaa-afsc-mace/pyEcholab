@@ -32,6 +32,12 @@ class motion_data(object):
     '''
     The motion_data class stores pitch, roll, heave, and heading data
     and provides a method to interpolate the data to your ping times.
+
+    3/2024 - extended to support MRU1 datagrams based on the KM Binary sensor
+             datagram, version 1. More info here:
+
+             https://www3.mbari.org/products/mbsystem/formatdoc/KongsbergKmall/EMdgmFormat_RevH/html/kmBinary.html
+
     '''
 
     CHUNK_SIZE = 500
@@ -41,6 +47,9 @@ class motion_data(object):
         # Create a counter to keep track of the number of datagrams.
         self.n_raw = 0
 
+        #  default to an MRU0 style object
+        self.has_MRU1 = False
+
         # Create arrays to store MRU0 data
         self.times = np.empty(motion_data.CHUNK_SIZE, dtype='datetime64[ms]')
         self.heave = np.empty(motion_data.CHUNK_SIZE, dtype='f')
@@ -49,21 +58,20 @@ class motion_data(object):
         self.heading = np.empty(motion_data.CHUNK_SIZE, dtype='f')
 
 
-    def add_datagram(self, time, heave, pitch, roll, heading):
+    def add_datagram(self, datagram):
         """
-        Add MRU0 datagram data.
+        Add motion datagram data. This method will extract the values from the provided motion
+        datagram and store it within this object.  This method will automatically convert from
+        storing MRU0 data to MRU1 if passed an MRU1 datagram.
 
         Args:
             time (datetime64)
-            heave (float)
-            pitch (float)
-            roll (float)
-            heading (float)
+            datagram (dict)
         """
 
         # Check if this datagram has the same time as the previous - This
         # simply filters replicate data when used with the EK60 class.
-        if self.times[self.n_raw - 1] ==  time:
+        if self.times[self.n_raw - 1] ==  datagram['timestamp']:
             # We already have this motion datagram stored.
             return
 
@@ -71,29 +79,65 @@ class motion_data(object):
         if self.n_raw == self.times.shape[0]:
             self._resize_arrays(self.times.shape[0] + motion_data.CHUNK_SIZE)
 
-        # Add this datagram to our data arrays
-        self.times[self.n_raw] = time
-        self.heave[self.n_raw] = heave
-        self.pitch[self.n_raw] = pitch
-        self.roll[self.n_raw] = roll
-        self.heading[self.n_raw] = heading
+        # Add the fields common to MRU0 and MRU1
+        self.times[self.n_raw] = datagram['timestamp']
+        self.heave[self.n_raw] = datagram['heave']
+        self.pitch[self.n_raw] = datagram['pitch']
+        self.roll[self.n_raw] = datagram['roll']
+        self.heading[self.n_raw] = datagram['heading']
+
+        #  check if we've been passed a MRU1 datagram
+        if 'status_word' in datagram:
+
+            #  yes, this is an MRU1 datagram, check if we have attributes to store
+            #  this data, if not, add the attributes to store this data
+            if not self.has_MRU1:
+                self._convert_to_MRU1()
+
+            #  add the remainder of the MRU1 fields
+            self.status = datagram['status_word']
+            self.latitude = datagram['latitude']
+            self.longitude = datagram['longitude']
+            self.ellipsoid_height = datagram['ellipsoid_height']
+            self.roll_rate = datagram['roll_rate']
+            self.pitch_rate = datagram['pitch_rate']
+            self.yaw_rate = datagram['yaw_rate']
+            self.north_velocity = datagram['velocity_north']
+            self.east_velocity = datagram['velocity_east']
+            self.down_velocity = datagram['velocity_down']
+            self.latitude_error = datagram['latitude_error']
+            self.longitude_error = datagram['longitude_error']
+            self.height_error = datagram['height_error']
+            self.roll_error = datagram['roll_error']
+            self.pitch_error = datagram['pitch_error']
+            self.heading_error = datagram['heading_error']
+            self.heave_error = datagram['heave_error']
+            self.north_acceleration = datagram['accel_north']
+            self.east_acceleration = datagram['accel_east']
+            self.down_acceleration = datagram['accel_down']
+            self.delayed_heave_utc_second = datagram['heave_delay_secs']
+            self.delayed_heave_utc_nanoseconds = datagram['heave_delay_usecs']
+            self.delayed_heave_m = datagram['heave_delay_m']
 
         # Increment datagram counter.
         self.n_raw += 1
 
 
-    def interpolate(self, p_data, data_type):
+    def interpolate(self, p_data, attributes=None):
         """
         interpolate returns the requested motion data interpolated to the ping times
         that are present in the provided ping_data object.
 
             p_data is a ping_data object that contains the ping_time vector
-                    to interpolate to.
-            data_type is a string pecifying the motion attribute to interpolate, valid
-                    values are: 'pitch', 'heave', 'roll', and 'heading'
+                    to interpolate to. You can also simply pass an array of datetime64
+                    objects to interpolate to if you are not working with processed_data
+                    objects.
             attributes is a string or list of strings specifying the motion attribute(s)
-                    to interpolate and return. If None, all attributes are interpolated
-                    and returned.
+                    to interpolate and return. If this argument is omitted or None, the
+                    following attributes will be returned:
+
+                        MRU0 data: 'heave', 'pitch', 'roll', 'heading'
+                        MRU1 data:'latitude', 'longitude', 'heave', 'pitch', 'roll', 'heading'
 
         Returns a dictionary of numpy arrays keyed by attribute name that contain the
         interpolated data for that attribute.
@@ -101,13 +145,16 @@ class motion_data(object):
         # Create the dictionary to return
         out_data = {}
 
-        # Check if we're been given specific attributes to interpolate
-        if data_type is None:
-            # No - interpolate all
-            attributes = ['heave', 'pitch', 'roll', 'heading']
-        elif isinstance(data_type, str):
+        # Check if we're been given specific attributes to interpolate. If not, we
+        # interpolate what I am defining as
+        if attributes is None:
+            if self.has_MRU1:
+                attributes = ['latitude', 'longitude', 'heave', 'pitch', 'roll', 'heading']
+            else:
+                attributes = ['heave', 'pitch', 'roll', 'heading']
+        elif isinstance(attributes, str):
             # We have a string, put it in a list
-            attributes = [data_type]
+            attributes = [attributes]
 
         #  check if the times are to be grabbed from a ping_data object
         if isinstance(p_data, ping_data):
@@ -133,7 +180,7 @@ class motion_data(object):
 
     def get_indices(self, start_time=None, end_time=None, time_order=True):
         """
-        Return index of data contained in speciofied time range.
+        Return index of data contained in specified time range.
 
         get_indices returns an index array containing the indices contained
         in the range defined by the times provided. By default the indexes
@@ -172,6 +219,17 @@ class motion_data(object):
         return primary_index[mask]
 
 
+    def trim(self):
+        """
+        Trim arrays to proper size after all data are added.
+
+        trim is called when one is done adding data to the object. It
+        removes empty elements of the data arrays.
+        """
+
+        self._resize_arrays(self.n_raw)
+
+
     def _resize_arrays(self, new_size):
         """
         Resize arrays if needed to hold more data.
@@ -185,28 +243,84 @@ class motion_data(object):
 
         """
 
+        #  extend the common fields
         self.times = np.resize(self.times,(new_size))
         self.pitch = np.resize(self.pitch,(new_size))
         self.roll = np.resize(self.roll,(new_size))
         self.heading = np.resize(self.heading,(new_size))
         self.heave = np.resize(self.heave,(new_size))
 
+        #  if we have MRU1 data, extend the MRU1 datagrams
+        if self.has_MRU1:
+            self.status = np.resize(self.status,(new_size))
+            self.latitude = np.resize(self.latitude,(new_size))
+            self.longitude = np.resize(self.longitude,(new_size))
+            self.ellipsoid_height = np.resize(self.ellipsoid_height,(new_size))
+            self.roll_rate = np.resize(self.roll_rate,(new_size))
+            self.pitch_rate = np.resize(self.pitch_rate,(new_size))
+            self.yaw_rate = np.resize(self.yaw_rate,(new_size))
+            self.north_velocity = np.resize(self.north_velocity,(new_size))
+            self.east_velocity = np.resize(self.east_velocity,(new_size))
+            self.down_velocity = np.resize(self.down_velocity,(new_size))
+            self.latitude_error = np.resize(self.latitude_error,(new_size))
+            self.longitude_error = np.resize(self.longitude_error,(new_size))
+            self.height_error = np.resize(self.height_error,(new_size))
+            self.roll_error = np.resize(self.roll_error,(new_size))
+            self.pitch_error = np.resize(self.pitch_error,(new_size))
+            self.heading_error = np.resize(self.heading_error,(new_size))
+            self.heave_error = np.resize(self.heave_error,(new_size))
+            self.north_acceleration = np.resize(self.north_acceleration,(new_size))
+            self.east_acceleration = np.resize(self.east_acceleration,(new_size))
+            self.down_acceleration = np.resize(self.down_acceleration,(new_size))
+            self.delayed_heave_utc_second = np.resize(self.delayed_heave_utc_second,(new_size))
+            self.delayed_heave_utc_nanoseconds = np.resize(self.delayed_heave_utc_nanoseconds,(new_size))
+            self.delayed_heave_m = np.resize(self.delayed_heave_m,(new_size))
 
-    def trim(self):
+
+    def _convert_to_MRU1(self):
         """
-        Trim arrays to proper size after all data are added.
+        _convert_to_MRU1 will extend the class to store all of the fields in the MRU1
+        motion datagram introduced around EK80 version 23.x. The MRU1 datagram is based on
+        and follows the format of the KM Binary sensor datagram, version 1. More info here:
 
-        trim is called when one is done adding data to the object. It
-        removes empty elements of the data arrays.
+        https://www3.mbari.org/products/mbsystem/formatdoc/KongsbergKmall/EMdgmFormat_RevH/html/kmBinary.html
+
         """
 
-        self._resize_arrays(self.n_raw)
+        #  when we extend the class for MRU1 data, create arrays filled with NaNs in case the object is
+        #  extended after already reading MRU0 style data.
+        self.status = np.full(self.times.size, 0, dtype='i4')
+        self.latitude = np.full(self.times.size, np.nan, dtype='f8')
+        self.longitude = np.full(self.times.size, np.nan, dtype='f8')
+        self.ellipsoid_height = np.full(self.times.size, np.nan, dtype='f')
+        self.roll_rate = np.full(self.times.size, np.nan, dtype='f')
+        self.pitch_rate = np.full(self.times.size, np.nan, dtype='f')
+        self.yaw_rate = np.full(self.times.size, np.nan, dtype='f')
+        self.north_velocity = np.full(self.times.size, np.nan, dtype='f')
+        self.east_velocity = np.full(self.times.size, np.nan, dtype='f')
+        self.down_velocity = np.full(self.times.size, np.nan, dtype='f')
+        self.latitude_error = np.full(self.times.size, np.nan, dtype='f')
+        self.longitude_error = np.full(self.times.size, np.nan, dtype='f')
+        self.height = np.full(self.times.size, np.nan, dtype='f')
+        self.roll_error = np.full(self.times.size, np.nan, dtype='f')
+        self.pitch_error = np.full(self.times.size, np.nan, dtype='f')
+        self.heading_error = np.full(self.times.size, np.nan, dtype='f')
+        self.heave_error = np.full(self.times.size, np.nan, dtype='f')
+        self.north_acceleration = np.full(self.times.size, np.nan, dtype='f')
+        self.east_acceleration = np.full(self.times.size, np.nan, dtype='f')
+        self.down_acceleration = np.full(self.times.size, np.nan, dtype='f')
+        self.delayed_heave_utc_second = np.full(self.times.size, 0, dtype='i4')
+        self.delayed_heave_utc_nanoseconds = np.full(self.times.size, 0, dtype='i4')
+        self.delayed_heave_m = np.full(self.times.size, np.nan, dtype='f')
+
+        #  set the has_MRU1 attribute since we now have MRU1 data
+        self.has_MRU1 = True
 
 
     def __str__(self):
         """
         Reimplemented string method that provides some basic info about the
-        nmea_data object.
+        motion_data object.
 
         """
 
@@ -218,6 +332,7 @@ class motion_data(object):
             msg = "{0}       MRU data start time: {1}\n".format(msg, self.times[0])
             msg = "{0}         MRU data end time: {1}\n".format(msg,self.times[self.n_raw-1])
             msg = "{0}       Number of datagrams: {1}\n".format(msg,self.n_raw+1)
+            msg = "{0}  Has extended motion data: {1}\n".format(msg,self.has_MRU1)
         else:
             msg = msg + ("  motion_data object contains no data\n")
 

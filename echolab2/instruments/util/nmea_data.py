@@ -29,6 +29,8 @@ import numpy as np
 #  minor bug fixes and differences of opinion in terms of the data types
 #  returned when parsing certain datagrams.
 from . import pynmea2
+from ...ping_data import ping_data
+
 
 class nmea_data(object):
     '''
@@ -232,10 +234,7 @@ class nmea_data(object):
         #  it weirdly loses its type when everything is removed from it. The other arrays
         #  seem to be fine.
         if self.n_raw == 0:
-            #self.raw_datagrams = np.array([], dtype=object)
-            #self.nmea_times = np.array([], dtype='datetime64[ms]')
             self.talkers = np.array([], dtype='U2')
-            #self.messages = np.array([], dtype='U3')
 
 
     def get_datagrams(self, message_types, start_time=None, end_time=None,
@@ -408,7 +407,9 @@ class nmea_data(object):
         that are present in the provided processed_data object.
 
             p_data is a processed data object that contains the ping_time vector
-                to interpolate to.
+                to interpolate to. You can also simply pass an array of datetime64
+                    objects to interpolate to if you are not working with processed_data
+                    objects.
             message_type is a string containing the NMEA-0183 message type
                 e.g. 'GGA', 'GLL', 'RMC', 'HDT')
             start_time is a datetime or datetime64 object defining the starting time of the data
@@ -444,6 +445,13 @@ class nmea_data(object):
                 raise ValueError("The provided NMEA message type {0} is unknown"
                         " to the interpolation method.".format(message_type))
 
+        #  check if the times are to be grabbed from a ping_data object
+        if isinstance(p_data, ping_data):
+            new_times = p_data.ping_time
+        else:
+            # If not a ping_data object, assume we've just been given times
+            new_times = p_data
+
         # Extract the NMEA data we need to interpolate.
         message_data = self.get_datagrams(interp_messages,
                                           start_time=start_time,
@@ -461,7 +469,7 @@ class nmea_data(object):
             out_data = {}
             for field in interp_fields:
                 # Set the interpolated fields to NaNs
-                out_data[field] = np.empty(p_data.ping_time.shape[0])
+                out_data[field] = np.empty(new_times.shape[0])
                 out_data[field][:] = np.nan
 
             # Determine the message types.
@@ -486,7 +494,7 @@ class nmea_data(object):
                 # work through the fields we're interpolating and interpolate.
                 if message_data[msg_type]['time'] is not None:
                     for field in interp_fields:
-                        i_field = np.interp(p_data.ping_time.astype('d'),
+                        i_field = np.interp(new_times.astype('d'),
                                 message_data[msg_type]['time'].astype('d'),
                                 message_data[msg_type][field],
                                 left=np.nan, right=np.nan)
@@ -507,7 +515,7 @@ class nmea_data(object):
 
             # Add the processed data object ping_time array to the out_data array
             # and return.
-            out_data['ping_time'] = p_data.ping_time.copy()
+            out_data['ping_time'] = new_times.copy()
 
         else:
             #  there is no NMEA data for this message_type
