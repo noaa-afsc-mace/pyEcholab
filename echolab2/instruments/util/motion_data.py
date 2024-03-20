@@ -69,22 +69,25 @@ class motion_data(object):
             datagram (dict)
         """
 
-        # Check if this datagram has the same time as the previous - This
-        # simply filters replicate data when used with the EK60 class.
-        if self.n_raw > 0 and self.times[self.n_raw - 1] ==  datagram['timestamp']:
+        # Check if this datagram has the same time as the previous datagram.
+        # This simply filters replicate data when used with the EK60 class.
+        if self.n_raw > 0 and self.times[self.n_raw-1] ==  datagram['timestamp']:
             # We already have this motion datagram stored.
             return
 
+        # Increment datagram counter.
+        self.n_raw += 1
+
         # Check if we need to resize our arrays.
-        if self.n_raw == self.times.shape[0]:
+        if self.n_raw > self.times.shape[0]:
             self._resize_arrays(self.times.shape[0] + motion_data.CHUNK_SIZE)
 
         # Add the fields common to MRU0 and MRU1
-        self.times[self.n_raw] = datagram['timestamp']
-        self.heave[self.n_raw] = datagram['heave']
-        self.pitch[self.n_raw] = datagram['pitch']
-        self.roll[self.n_raw] = datagram['roll']
-        self.heading[self.n_raw] = datagram['heading']
+        self.times[self.n_raw-1] = datagram['timestamp']
+        self.heave[self.n_raw-1] = datagram['heave']
+        self.pitch[self.n_raw-1] = datagram['pitch']
+        self.roll[self.n_raw-1] = datagram['roll']
+        self.heading[self.n_raw-1] = datagram['heading']
 
         #  check if we've been passed a MRU1 datagram
         if 'status_word' in datagram:
@@ -95,32 +98,29 @@ class motion_data(object):
                 self._convert_to_MRU1()
 
             #  add the remainder of the MRU1 fields
-            self.status[self.n_raw] = datagram['status_word']
-            self.latitude[self.n_raw] = datagram['latitude']
-            self.longitude[self.n_raw] = datagram['longitude']
-            self.ellipsoid_height[self.n_raw] = datagram['ellipsoid_height']
-            self.roll_rate[self.n_raw] = datagram['roll_rate']
-            self.pitch_rate[self.n_raw] = datagram['pitch_rate']
-            self.yaw_rate[self.n_raw] = datagram['yaw_rate']
-            self.north_velocity[self.n_raw] = datagram['velocity_north']
-            self.east_velocity[self.n_raw] = datagram['velocity_east']
-            self.down_velocity[self.n_raw] = datagram['velocity_down']
-            self.latitude_error[self.n_raw] = datagram['latitude_error']
-            self.longitude_error[self.n_raw] = datagram['longitude_error']
-            self.height_error[self.n_raw] = datagram['height_error']
-            self.roll_error[self.n_raw] = datagram['roll_error']
-            self.pitch_error[self.n_raw] = datagram['pitch_error']
-            self.heading_error[self.n_raw] = datagram['heading_error']
-            self.heave_error[self.n_raw] = datagram['heave_error']
-            self.north_acceleration[self.n_raw] = datagram['accel_north']
-            self.east_acceleration[self.n_raw] = datagram['accel_east']
-            self.down_acceleration[self.n_raw] = datagram['accel_down']
-            self.delayed_heave_utc_second[self.n_raw] = datagram['heave_delay_secs']
-            self.delayed_heave_utc_nanoseconds[self.n_raw] = datagram['heave_delay_usecs']
-            self.delayed_heave_m[self.n_raw] = datagram['heave_delay_m']
-
-        # Increment datagram counter.
-        self.n_raw += 1
+            self.status[self.n_raw-1] = datagram['status_word']
+            self.latitude[self.n_raw-1] = datagram['latitude']
+            self.longitude[self.n_raw-1] = datagram['longitude']
+            self.ellipsoid_height[self.n_raw-1] = datagram['ellipsoid_height']
+            self.roll_rate[self.n_raw-1] = datagram['roll_rate']
+            self.pitch_rate[self.n_raw-1] = datagram['pitch_rate']
+            self.yaw_rate[self.n_raw-1] = datagram['yaw_rate']
+            self.north_velocity[self.n_raw-1] = datagram['velocity_north']
+            self.east_velocity[self.n_raw-1] = datagram['velocity_east']
+            self.down_velocity[self.n_raw-1] = datagram['velocity_down']
+            self.latitude_error[self.n_raw-1] = datagram['latitude_error']
+            self.longitude_error[self.n_raw-1] = datagram['longitude_error']
+            self.height_error[self.n_raw-1] = datagram['height_error']
+            self.roll_error[self.n_raw-1] = datagram['roll_error']
+            self.pitch_error[self.n_raw-1] = datagram['pitch_error']
+            self.heading_error[self.n_raw-1] = datagram['heading_error']
+            self.heave_error[self.n_raw-1] = datagram['heave_error']
+            self.north_acceleration[self.n_raw-1] = datagram['accel_north']
+            self.east_acceleration[self.n_raw-1] = datagram['accel_east']
+            self.down_acceleration[self.n_raw-1] = datagram['accel_down']
+            self.delayed_heave_utc_second[self.n_raw-1] = datagram['heave_delay_secs']
+            self.delayed_heave_utc_nanoseconds[self.n_raw-1] = datagram['heave_delay_usecs']
+            self.delayed_heave_m[self.n_raw-1] = datagram['heave_delay_m']
 
 
     def interpolate(self, p_data, attributes=None):
@@ -227,7 +227,7 @@ class motion_data(object):
         removes empty elements of the data arrays.
         """
 
-        self._resize_arrays(self.n_raw - 1)
+        self._resize_arrays(self.n_raw)
 
 
     def _resize_arrays(self, new_size):
@@ -330,9 +330,9 @@ class motion_data(object):
         #  print some more info about the motion_data instance
         if (self.n_raw > 0):
             msg = "{0}       MRU data start time: {1}\n".format(msg, self.times[0])
-            msg = "{0}         MRU data end time: {1}\n".format(msg,self.times[self.n_raw-1])
-            msg = "{0}       Number of datagrams: {1}\n".format(msg,self.n_raw+1)
-            msg = "{0}  Has extended motion data: {1}\n".format(msg,self.has_MRU1)
+            msg = "{0}         MRU data end time: {1}\n".format(msg, self.times[self.n_raw-1])
+            msg = "{0}       Number of datagrams: {1}\n".format(msg, self.n_raw)
+            msg = "{0}  Has extended motion data: {1}\n".format(msg, self.has_MRU1)
         else:
             msg = msg + ("  motion_data object contains no data\n")
 
