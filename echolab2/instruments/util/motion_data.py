@@ -71,7 +71,7 @@ class motion_data(object):
 
         # Check if this datagram has the same time as the previous - This
         # simply filters replicate data when used with the EK60 class.
-        if self.times[self.n_raw - 1] ==  datagram['timestamp']:
+        if self.n_raw > 0 and self.times[self.n_raw - 1] ==  datagram['timestamp']:
             # We already have this motion datagram stored.
             return
 
@@ -95,29 +95,29 @@ class motion_data(object):
                 self._convert_to_MRU1()
 
             #  add the remainder of the MRU1 fields
-            self.status = datagram['status_word']
-            self.latitude = datagram['latitude']
-            self.longitude = datagram['longitude']
-            self.ellipsoid_height = datagram['ellipsoid_height']
-            self.roll_rate = datagram['roll_rate']
-            self.pitch_rate = datagram['pitch_rate']
-            self.yaw_rate = datagram['yaw_rate']
-            self.north_velocity = datagram['velocity_north']
-            self.east_velocity = datagram['velocity_east']
-            self.down_velocity = datagram['velocity_down']
-            self.latitude_error = datagram['latitude_error']
-            self.longitude_error = datagram['longitude_error']
-            self.height_error = datagram['height_error']
-            self.roll_error = datagram['roll_error']
-            self.pitch_error = datagram['pitch_error']
-            self.heading_error = datagram['heading_error']
-            self.heave_error = datagram['heave_error']
-            self.north_acceleration = datagram['accel_north']
-            self.east_acceleration = datagram['accel_east']
-            self.down_acceleration = datagram['accel_down']
-            self.delayed_heave_utc_second = datagram['heave_delay_secs']
-            self.delayed_heave_utc_nanoseconds = datagram['heave_delay_usecs']
-            self.delayed_heave_m = datagram['heave_delay_m']
+            self.status[self.n_raw] = datagram['status_word']
+            self.latitude[self.n_raw] = datagram['latitude']
+            self.longitude[self.n_raw] = datagram['longitude']
+            self.ellipsoid_height[self.n_raw] = datagram['ellipsoid_height']
+            self.roll_rate[self.n_raw] = datagram['roll_rate']
+            self.pitch_rate[self.n_raw] = datagram['pitch_rate']
+            self.yaw_rate[self.n_raw] = datagram['yaw_rate']
+            self.north_velocity[self.n_raw] = datagram['velocity_north']
+            self.east_velocity[self.n_raw] = datagram['velocity_east']
+            self.down_velocity[self.n_raw] = datagram['velocity_down']
+            self.latitude_error[self.n_raw] = datagram['latitude_error']
+            self.longitude_error[self.n_raw] = datagram['longitude_error']
+            self.height_error[self.n_raw] = datagram['height_error']
+            self.roll_error[self.n_raw] = datagram['roll_error']
+            self.pitch_error[self.n_raw] = datagram['pitch_error']
+            self.heading_error[self.n_raw] = datagram['heading_error']
+            self.heave_error[self.n_raw] = datagram['heave_error']
+            self.north_acceleration[self.n_raw] = datagram['accel_north']
+            self.east_acceleration[self.n_raw] = datagram['accel_east']
+            self.down_acceleration[self.n_raw] = datagram['accel_down']
+            self.delayed_heave_utc_second[self.n_raw] = datagram['heave_delay_secs']
+            self.delayed_heave_utc_nanoseconds[self.n_raw] = datagram['heave_delay_usecs']
+            self.delayed_heave_m[self.n_raw] = datagram['heave_delay_m']
 
         # Increment datagram counter.
         self.n_raw += 1
@@ -227,7 +227,7 @@ class motion_data(object):
         removes empty elements of the data arrays.
         """
 
-        self._resize_arrays(self.n_raw)
+        self._resize_arrays(self.n_raw - 1)
 
 
     def _resize_arrays(self, new_size):
@@ -301,7 +301,7 @@ class motion_data(object):
         self.down_velocity = np.full(self.times.size, np.nan, dtype='f')
         self.latitude_error = np.full(self.times.size, np.nan, dtype='f')
         self.longitude_error = np.full(self.times.size, np.nan, dtype='f')
-        self.height = np.full(self.times.size, np.nan, dtype='f')
+        self.height_error = np.full(self.times.size, np.nan, dtype='f')
         self.roll_error = np.full(self.times.size, np.nan, dtype='f')
         self.pitch_error = np.full(self.times.size, np.nan, dtype='f')
         self.heading_error = np.full(self.times.size, np.nan, dtype='f')
