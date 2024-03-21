@@ -37,41 +37,39 @@ $Id$
 import os
 from . import EK80
 from . import EK60
+from .util import simrad_utils
 
 
 SIMRAD_EK60 = 0
 SIMRAD_EK80 = 1
 
 
-def read(files, **kwargs):
+def read(files, ignore_errors=False, **kwargs):
+    """
+
+    """
 
     # if we're given a string, wrap it in a list
     if not isinstance(files, list):
             files = [files]
 
-    obj_map = []
-    data_objs = []
+    data_object = None
 
-    # Work through list
+    # Work through the list of input files
     for index, item in enumerate(files):
         filename = os.path.normpath(item)
 
         # Determine what kind of data file we have
-        data_type = check_filetype(filename)
+        if data_object is None:
+            data_type = _check_filetype(filename)
 
-        if data_type in obj_map:
-            data_object = data_objs[obj_map.index(data_type)]
-        else:
             if data_type == SIMRAD_EK60:
-                # This is the first EK60 file - create the EK60 object
-                obj_map.append(data_type)
+                # This is an EK60 file, we're going to assume all files are EK60
                 data_object = EK60.EK60()
-                data_objs.append(data_object)
+
             elif data_type == SIMRAD_EK80:
-                # This is the first EK80 file - create the EK80 object
-                obj_map.append(data_type)
+                # This is an EK80 file, we're going to assume all files are EK80
                 data_object = EK80.EK80()
-                data_objs.append(data_object)
             else:
                 # We don't know what this is
                 raise UnknownFormatError("Unknown file type encountered: " + filename)
@@ -79,10 +77,30 @@ def read(files, **kwargs):
         # Read the data file using the object for this data type
         data_object.append_raw(filename, **kwargs)
 
-    return data_objs
+        #  now try to read the bottom data. We are assuming the .bot or .XYZ files are colocated
+        #  with the .raw file and that they follow the normal Simrad naming convention.
+        if data_type == SIMRAD_EK80:
+            #  Simrad EK80 systems can generate both XYZ and.or .bot files
+            bot_type, bot_files = simrad_utils.get_simrad_bottom_files(filename, data_object)
+            if type == 'BOT':
+                data_object.read_bot(bot_files)
+            elif type == 'XYZ':
+                for channel_id in bot_files:
+                    data_object.read_xyz(channel_id, bot_files[channel_id])
+
+        elif data_type == SIMRAD_EK60:
+            #  Simrad EK60 systems do not generate XYZ files so we only check for .bot files
+            _, bot_files = simrad_utils.get_simrad_bottom_files(filename, data_object,
+                skip_xyz=True)
+            if bot_files:
+                data_object.read_bot(bot_files)
 
 
-def check_filetype(filename):
+    return data_object
+
+
+
+def _check_filetype(filename):
 
     # Read in the file header, this value can change if additional
     # instruments are introduced with larger headers.

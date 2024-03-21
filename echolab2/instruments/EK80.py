@@ -35,6 +35,7 @@ $Id$
 
 import os
 import re
+import datetime
 import numpy as np
 from scipy.interpolate import interp1d
 from .util.simrad_calibration import calibration
@@ -171,7 +172,7 @@ class EK80(object):
         self.read_channel_ids = []
 
         # raw_data_width defines the allocation chunk size (in pings) used by
-        # the raw data objects. If .idx files are availble, this will be modified
+        # the raw data objects. If .idx files are available, this will be modified
         # on a per file basis based on the number of pings in the .idx file.
         self.raw_data_width = EK80.DEFAULT_CHUNK_SIZE
 
@@ -238,7 +239,7 @@ class EK80(object):
 
         # data_array_dims contains the dimensions of the sample and angle or
         # complex data arrays specified as [n_pings, n_samples].  Values of
-        # -1 specifythat the arrays will resize appropriately to contain all
+        # -1 specify that the arrays will resize appropriately to contain all
         # pings and all samples read from the data source.  Setting values > 0
         # will create arrays that are fixed to that size.  Any samples beyond
         # the number specified as n_samples will be dropped.  When a ping is
@@ -253,7 +254,7 @@ class EK80(object):
         self._config = None
         self._filters = {}
         self._tx_params = {}
-        self._environment = None
+        self._environment = {}
         self._ping_sequence = None
         self._initial_params = {}
         self._file_n_channels = 0
@@ -299,6 +300,92 @@ class EK80(object):
 
         #  now call append_raw, passing on all arguments
         self.append_raw(*args, **kwargs)
+
+
+    def read_xyz(self, channel_id, xyz_file):
+        """Reads bottom detections from .xyz files created by EK80 systems. .xyz files
+        are ASCII based files that are generated for each channel that contain lat, lon
+        detected bottom depth, date, time, and transducer draft.
+
+        If configured to record XYZ files, EK80 system generates an XYZ file for
+        each channel for each raw file so unlike reading .bot files, you must call this
+        method for each channel you want to read bottom data into. You can
+        use the raw_data.get_bottom() method to get a pyEcholab2 line object
+        representing the bottom detections. If you work with the bottom detection
+        data directly, remember that the depths are computed using the sound speed
+        at the time of collection. If you are using a different sound speed for
+        processing, you will need to adjust the raw bottom depths accordingly.
+
+        It should be noted that XYZ files are the preferred method for storing bottom
+        detection data with the EK80. While bot files work fine for basic data collection,
+        they have issues when using ping sequencing so it's best to work with XYZ files.
+
+               *** You must read the corresponding .raw files first. ***
+
+        channel_id (str): A string containing the channel ID the XYZ file is
+            associated with. The bottom detections read from the XYZ file will
+            be added to this channel's raw_data object.
+
+        xyz_file (str): A string containing the full path to the XYZ file to be
+            read.
+
+        """
+
+        def convert_float(val):
+            try:
+                val = float(val)
+            except:
+                val = np.nan
+            return val
+
+        #  make sure the channel ID provided exists in our data.
+        if channel_id in self.raw_data:
+            xyz_file = os.path.normpath(xyz_file)
+            try:
+                with open(xyz_file, 'r') as infile:
+                    for xyz_line in infile:
+
+                        #  split the row
+                        parts = xyz_line.split()
+                        n_parts = len(parts)
+
+                        if n_parts == 8:
+                            #  this is the XYZ format introduced in EK80 21.15.x with hemisphere
+                            (lat, lat_h, lon, lon_h, depth, date, time, draft) = parts
+                        elif n_parts == 6:
+                            #  this is the OG XYZ with signed lat/lon
+                            (lat, lon, depth, date, time, draft) = parts
+                        else:
+                            #  malformed line, skip it
+                            continue
+
+                        # Convert the time elements to datetime64
+                        ping_time = np.datetime64(datetime.strptime(date + time, "%d%m%Y%H%M%S.%f"))
+                        #  convert depth to float
+                        depth_data = convert_float(depth)
+
+                        #  check each raw object for a matched time
+                        for raw_obj in self.raw_data[channel_id]:
+
+                            if not hasattr(raw_obj, 'detected_bottom'):
+                                # This data object doesn't have the detected_bottom attribute.
+                                # Create and add it.
+                                new_attr = np.full((raw_obj.ping_time.shape), np.nan, np.float32)
+                                raw_obj.add_data_attribute('detected_bottom', new_attr)
+
+                            # Get the index of this detection and insert into data object
+                            ping_idx = raw_obj.ping_time == ping_time
+                            raw_obj.detected_bottom[ping_idx] = depth_data
+
+                            #  there should only be one match so we move on
+                            break
+
+            except Exception as e:
+                raise IOError('Error reading XYZ file ' + xyz_file + ". " + str(e))
+
+        else:
+             raise ValueError("Unable to read XYZ file. Unknown channel ID: " + channel_id +
+                    " You must read the raw data first, before reading the bottom detection data.")
 
 
     def read_bot(self, bot_files):
@@ -465,7 +552,7 @@ class EK80(object):
             self._config = None
             self._filters = {}
             self._tx_params = {}
-            self._environment = None
+            self._environment = {}
             self._ping_sequence = None
             self._initial_params = {}
             self._file_channel_number_map = {}
@@ -756,8 +843,11 @@ class EK80(object):
                 self._param_channel_id = new_datagram[new_datagram['subtype']]['channel_id']
 
             elif new_datagram['subtype'] == 'environment':
-                #  update the most recent environment attribute
-                self._environment = new_datagram[new_datagram['subtype']]
+                #  update the most recent environment attribute. EK80 can write partial
+                #  environment datagrams so we have to copy and update the existing
+                #  self._environment dict instead of overwriting it.
+                self._environment = self._environment.copy()
+                self._environment.update(new_datagram[new_datagram['subtype']])
 
             # InitialParameter and PingSequence seem to be required for replay
             # in the EK80 application but aren't required to work with the data.
@@ -1575,7 +1665,13 @@ class EK80(object):
             dg_obj_idx = np.array([], dtype=np.uint32)
             dg_type = np.array([], dtype='S3')
 
-            # Add the raw data
+            # Add the raw data - at the same time we will also build an array of environment
+            # datagrams unique to each channel. Due to the way environment data is stored and
+            # the fact that ping sequencing can generate channels that may not reference all
+            # environment datagrams, we have to check for distinct datagrams in every ping
+            # of every channel.
+            environment_times = []
+            environment_data = []
             for channel in data_by_file[infile]:
                 for data in data_by_file[infile][channel]:
                     # First, remove any empty pings from the index.
@@ -1587,23 +1683,36 @@ class EK80(object):
                     dg_obj_idx = np.concatenate((dg_obj_idx, data['index']))
                     dg_type = np.concatenate((dg_type, np.repeat('RAW', times.size)))
 
+                    # get the unique environment datagrams for this channel
+                    _, env_idx = np.unique(np.array([id(xi) for xi in data['data'].environment]),
+                        return_index=True)
+                    # add the distinct environment datagrams to our global list. If we already
+                    # have it in our list, make sure we capture the earliest time it is referenced and
+                    # then subtract 1 ms to ensure it is written before the first ping that referenced
+                    # it. This will not match the original datagram timestamp but it should be
+                    # functionally the same.
+                    for idx in env_idx:
+                        if data['data'].environment[idx] not in environment_data:
+                            environment_times.append(data['data'].ping_time[idx] - np.timedelta64(1, 'ms'))
+                            environment_data.append(data['data'].environment[idx])
+                        else:
+                            time_idx = environment_data.index(data['data'].environment[idx])
+                            this_time = data['data'].ping_time[idx] - np.timedelta64(1, 'ms')
+                            if environment_times[time_idx] > this_time:
+                                environment_times[time_idx] = this_time
+
             # Determine the data time window
             raw_start_time = dg_times[0]
             async_start_time = dg_times[0] - async_window_secs
             async_end_time = dg_times[-1] + async_window_secs
 
-            # Get the unique environment datagrams - we can use the reference to the
-            # last data object in the last channel that exists after adding the raw
-            # data above to get the environment data. The references to the environment
-            # datagrams are shared between all channels.
-            data_by_file[infile][channel]
-            _, env_idx = np.unique(np.array([id(xi) for xi in data['data'].environment]),
-                    return_index=True)
-            times = data['data'].ping_time[env_idx]
-            dg_times = np.insert(dg_times, 0, times)
-            dg_objects = np.insert(dg_objects, 0, data['data'].environment[env_idx])
-            dg_obj_idx = np.insert(dg_obj_idx, 0, env_idx)
-            dg_type = np.insert(dg_type, 0, np.repeat('ENV', times.size))
+            # add the environment datagrams we extracted above
+            n_env_datagrams = len(environment_times)
+            dg_times = np.insert(dg_times, 0, environment_times)
+            dg_objects = np.insert(dg_objects, 0, environment_data)
+            # dg_obj_idx is not used for environment datagrams so we just pad it here
+            dg_obj_idx = np.insert(dg_obj_idx, 0, [0] * n_env_datagrams)
+            dg_type = np.insert(dg_type, 0, np.repeat('ENV', n_env_datagrams))
 
             # Next, add the annotation data
             annotation_idx = self.annotations.get_indices(start_time=async_start_time,
@@ -1719,7 +1828,6 @@ class EK80(object):
 
                     # And write
                     bytes_written += raw_fid.write(DGRAM_PARSE_KEY['FIL'].to_string(filter_dgram))
-
 
             #  now write out all the rest of the datagrams
             for idx in range(n_datagrams):
@@ -2644,6 +2752,32 @@ class raw_data(ping_data):
                 # The array has the same number of samples.
                 self.angles_alongship_e[this_ping,:] = alongship_e
                 self.angles_athwartship_e[this_ping,:] = athwartship_e
+
+
+    def get_datafile_names(self):
+        """get_datafile_names returns a dictionary keyed by data file name containing
+        the names of the data files read. The dict elements themselves are dictionaries
+        containing the full path to the data file and a list containing the indices
+        associated with the data file.
+
+        Usually one would already know this information and this method is primarily
+        intended to be used internally to discover bottom detection files associated
+        with the data that has been read.
+
+        """
+
+        idx = 0
+        data_files = {}
+
+        for c in self.configuration:
+            if c['file_name'] not in data_files:
+                data_files[c['file_name']] = {'ping_index':[], 'path':'', 'channel_id_short':''}
+                data_files[c['file_name']]['path'] = c['file_path']
+                data_files[c['file_name']]['channel_id_short'] = c['channel_id_short']
+            data_files[c['file_name']]['ping_index'].append(idx)
+            idx += 1
+
+        return data_files
 
 
     def get_calibration(self, **kwargs):

@@ -1183,14 +1183,20 @@ class SimradXMLParser(_SimradDatagramParser):
                     #  add the data to the environment dict
                     dict_to_dict(env_xml, data['environment'], self.environment_xml_map)
 
-                #  add the xdcr environment data
-                data['environment']['transducer_name'] = []
-                data['environment']['transducer_sound_speed'] = []
+                #  add the xdcr environment data - only create dict elements if data exists.
                 for h in root_node.iter('Transducer'):
                     try:
                         transducer_xml = h.attrib
-                        data['environment']['transducer_name'].append(transducer_xml['TransducerName'])
-                        data['environment']['transducer_sound_speed'].append(float(transducer_xml['SoundSpeed']))
+
+                        xdcr_name = transducer_xml['TransducerName']
+                        if 'transducer_name' not in data['environment']:
+                            data['environment']['transducer_name'] = []
+                        data['environment']['transducer_name'].append(xdcr_name)
+
+                        xdcr_sound_speed = float(transducer_xml['SoundSpeed'])
+                        if 'transducer_sound_speed' not in data['environment']:
+                            data['environment']['transducer_sound_speed'] = []
+                        data['environment']['transducer_sound_speed'].append(xdcr_sound_speed)
                     except:
                         pass
         return data
