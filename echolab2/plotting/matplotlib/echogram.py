@@ -297,9 +297,9 @@ class Echogram(object):
 
         Args:
             line_obj (Line obj.): An instance of a PyEcholab Line object.
-            color (list): Defines the colors of the plot lines.
-            linestyle (str): Defines the style of the plot lines.
-            linewidth (float): Defines the width of the plot lines.
+            color (list): Defines the color of the plotted line.
+            linestyle (str): Defines the style of the plotted line.
+            linewidth (float): Defines the width of the plotted line.
         """
 
         if color is None:

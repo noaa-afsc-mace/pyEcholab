@@ -855,6 +855,7 @@ class EK80(object):
                 #  the initialparameter is a little different in that it appears
                 #  only once in the file after the config header before the filters.
                 self._initial_params = new_datagram[new_datagram['subtype']]
+                print(self._initial_params)
 
             elif new_datagram['subtype'] == 'pingsequence':
                 # The PingSequence datagram seems to come right before the
@@ -3898,7 +3899,7 @@ class raw_data(ping_data):
         Args:
             return_indices (np.array uint32): Set this to a numpy array that contains
                 the index values to return in the processed data object. This can be
-                used for more advanced anipulations where start/end ping/time are
+                used for more advanced manipulations where start/end ping/time are
                 inadequate.
 
             calibration (EK80.ek80_calibration): Set to an instance of

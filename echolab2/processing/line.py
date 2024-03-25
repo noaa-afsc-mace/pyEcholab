@@ -53,13 +53,13 @@ class line(ping_data):
                0-1 while Qt accepts integers in the range 0-255.
         name (string): name or label for the line.
         linestyle: linestyle is a string that defines the style of the line.
-        thickness: thickness is a float the defines the width of the line.
+        linewidth: linewidth is a float the defines the width of the line.
     """
 
     def __init__(self, ping_time=None, data=None, color=[0.58, 0.0, 0.83],
-                 name='line', linestyle='solid', thickness=1.0, **_):
+                 name='line', linestyle='solid', linewidth=1.0, **_):
         """Initializes line class object.
-        
+
         Args:
             ping_time (numpy array): ping_time is a array of datetime64 objects
                     defining the horizontal vertices of the line.
@@ -75,7 +75,7 @@ class line(ping_data):
                    0-1 while Qt accepts integers in the range 0-255.
             name (string): name or label for the line.
             linestyle: linestyle is a string that defines the style of the line.
-            thickness: thickness is a float the defines the width of the line.
+            linewidth: linewidth is a float the defines the width of the line.
 
         """
         super(line, self).__init__()
@@ -117,7 +117,7 @@ class line(ping_data):
         self.color = color
         self.name = name
         self.linestyle = linestyle
-        self.thickness = thickness
+        self.linewidth = linewidth
 
         # Update out data_attributes list, adding the "data" attribute.
         self._data_attributes += ['data']
@@ -142,10 +142,10 @@ class line(ping_data):
 #                    "this" line.
 #            linestyle: linestyle is a string that defines the style of the line. If not
 #                    provided, it is copied "this" line.
-#            thickness: thickness is a float the defines the width of the line. If not
+#            linewidth: linewidth is a float the defines the width of the line. If not
 #                    provided, it is copied "this" line.
 #        """
-#        
+#
 #        return line.empty_like(self, **kwargs)
 #
 #
@@ -155,7 +155,7 @@ class line(ping_data):
 #
 #        This method creates a line with the same number of vertices (i.e.
 #        ping_times) as "this" line. If no arguments are provided, this method
-#        will return a copy of this line. You can provide arguments to 
+#        will return a copy of this line. You can provide arguments to
 #
 #        Args:
 #            data: (None, float or numpy array): data can be None, a float or a 1d numpy
@@ -173,7 +173,7 @@ class line(ping_data):
 #                    "this" line.
 #            linestyle: linestyle is a string that defines the style of the line. If not
 #                    provided, it is copied "this" line.
-#            thickness: thickness is a float the defines the width of the line. If not
+#            linewidth: linewidth is a float the defines the width of the line. If not
 #                    provided, it is copied "this" line.
 #
 #        Raise:
@@ -181,12 +181,12 @@ class line(ping_data):
 #                    the ping_time attribute.
 #
 #        """
-#        
+#
 #        return line.like(self, **kwargs)
 
 
     def copy(self, **kwargs):
-        """Returns a copy of this line object. 
+        """Returns a copy of this line object.
 
         Args:
             None
@@ -194,9 +194,9 @@ class line(ping_data):
             A copy of this echolab2 line object with attributes that are the
             same as "this" object.
         """
-        
+
         return line.like(self)
-        
+
 
     def _setup_numeric(self, other):
         """Internal method containing generalized numeric operators code.
@@ -561,36 +561,36 @@ def empty_like(like_obj, **kwargs):
     the name and color attributes are copied if not explicitly provided. If a
     processed data object is passed the returned line will have the default line
     attributes if not explicitly provided.
-    
+
     Args:
         like_obj (processed_data obj or line object): The object to base the
             mask off of. The line will have the same number of pings with the
             same ping times as the "like" object. If a processed_data object
-            is provided, the ancillary properties such as color and thickness
+            is provided, the ancillary properties such as color and linewidth
             will be set to the default values. If a line object is provided
             these attributes will be copied.
-    
+
     """
 
     # make sure the user didn't pass the data keyword
     kwargs.pop('data', None)
-    
+
     # call line.like not passing anything for data which results in nans
     return like(like_obj, **kwargs)
-    
+
 
 def like(like_obj, data=None, **kwargs):
     """Creates a line that matches a provided data object. It may or may not be
     an exact copy depending on the arguments passed.
 
     This method creates a line with shape and axes properties that match an
-    existing processed_data or line object. This 
+    existing processed_data or line object. This
 
     Args:
         like_obj (processed_data obj or line object): The object to base the
                 line off of. The line will have the same number of pings with the
                 same ping times as the "like" object. If a processed_data object
-                is provided, the ancillary properties such as color and thickness
+                is provided, the ancillary properties such as color and linewidth
                 will be set to the default values if none are provided. If a line
                 object is provided these attributes will be copied if not
                 explicitly provided.
@@ -609,7 +609,7 @@ def like(like_obj, data=None, **kwargs):
                 "this" line.
         linestyle: linestyle is a string that defines the style of the line. If not
                 provided, it is copied "this" line.
-        thickness: thickness is a float the defines the width of the line. If not
+        linewidth: linewidth is a float the defines the width of the line. If not
                 provided, it is copied "this" line.
 
     Raise:
@@ -618,17 +618,17 @@ def like(like_obj, data=None, **kwargs):
     """
 
     # lines must be based on processed_data objects or other lines.
-    # Use type().__name__ to determine if class of "like_obj" is a 
+    # Use type().__name__ to determine if class of "like_obj" is a
     # processed_data object to avoid circular import references
     if type(like_obj).__name__ == 'processed_data':
         # Base this line off of a processed_data object.
         new_line = line(ping_time=like_obj.ping_time.copy(),
             data=data, **kwargs)
-        
+
     elif isinstance(like_obj, line):
-        # Base this line off of another line. If the user doesn't provide an 
+        # Base this line off of another line. If the user doesn't provide an
         # argument we copy the attribute from the provided line.
-        
+
         if data is None:
             data = like_obj.data.copy()
         if 'color' not in kwargs:
@@ -637,12 +637,12 @@ def like(like_obj, data=None, **kwargs):
             name = like_obj.name
         if 'linestyle' not in kwargs:
             linestyle = like_obj.linestyle
-        if 'thickness' not in kwargs:
-            thickness = like_obj.thickness
+        if 'linewidth' not in kwargs:
+            linewidth = like_obj.linewidth
 
         new_line = line(ping_time=like_obj.ping_time.copy(),
             data=data, color=color, name=name, linestyle=linestyle,
-            thickness=thickness)
+            linewidth=linewidth)
 
     return new_line
 
@@ -665,7 +665,7 @@ def read_evl(evl_filename, name='evl_line', ignore_status=False, **kwargs):
         Note that vertices with the special value of -10000.99 are always assigned NaN
     color: color is a list which defines the color of the line.
     linestyle: linestyle is a string that defines the style of the line.
-    thickness: thickness is a float the defines the width of the line.
+    linewidth: linewidth is a float the defines the width of the line.
 
     '''
 
@@ -747,7 +747,7 @@ def read_xyz(xyz_filename, name='xyz_line', as_range=False, calibration=None,
 
     color: color is a list which defines the color of the line.
     linestyle: linestyle is a string that defines the style of the line.
-    thickness: thickness is a float the defines the width of the line.
+    linewidth: linewidth is a float the defines the width of the line.
 
     '''
 
@@ -797,7 +797,7 @@ def read_xyz(xyz_filename, name='xyz_line', as_range=False, calibration=None,
         elif n_parts == 6:
             #  this is the OG XYZ with signed lat/lon
             (lat, lon, depth, date, time, draft) = parts
-            
+
             #  convert lat/lon to floats
             lat = convert_float(lat)
             lon = convert_float(lon)
