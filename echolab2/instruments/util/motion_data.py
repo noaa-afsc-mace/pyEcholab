@@ -123,7 +123,7 @@ class motion_data(object):
             self.delayed_heave_m[self.n_raw-1] = datagram['heave_delay_m']
 
 
-    def interpolate(self, p_data, attributes=None):
+    def interpolate(self, p_data, attributes=None, ignore_nans=True):
         """
         interpolate returns the requested motion data interpolated to the ping times
         that are present in the provided ping_data object.
@@ -166,11 +166,20 @@ class motion_data(object):
         # Work through the attributes and interpolate
         for attribute in attributes:
             try:
+                #  get references to our data and associated times
+                data = getattr(self, attribute)
+                times = self.times.astype('d')
+
+                #  if we're ignoring nans in the data, filter them out
+                if ignore_nans:
+                    nan_idx = np.isnan(data)
+                    data = data[~nan_idx]
+                    times = times[~nan_idx]
+
                 # Interpolate this attribute using the time vector in the
                 # provided ping_data object
                 out_data[attribute] = np.interp(new_times.astype('d'),
-                        self.times.astype('d'), getattr(self, attribute),
-                        left=0, right=0)
+                        times, data, left=np.nan, right=np.nan)
             except:
                 # Provided attribute doesn't exist
                 out_data[attribute] = None
