@@ -47,7 +47,7 @@ class motion_data(object):
         # Create a counter to keep track of the number of datagrams.
         self.n_raw = 0
 
-        #  default to an MRU0 style object
+        #  set a variable to track if we've read an MRU1 datagram
         self.has_MRU1 = False
 
         # Create arrays to store MRU0 data
@@ -90,7 +90,7 @@ class motion_data(object):
         self.heading[self.n_raw-1] = datagram['heading']
 
         #  check if we've been passed a MRU1 datagram
-        if 'status_word' in datagram:
+        if datagram['type'] == 'MRU1':
 
             #  yes, this is an MRU1 datagram, check if we have attributes to store
             #  this data, if not, add the attributes to store this data
@@ -139,6 +139,8 @@ class motion_data(object):
                         MRU0 data: 'heave', 'pitch', 'roll', 'heading'
                         MRU1 data:'latitude', 'longitude', 'heave', 'pitch', 'roll', 'heading'
 
+            ignore_nans (bool): Set to True to filter out NaN data before interpolating.
+
         Returns a dictionary of numpy arrays keyed by attribute name that contain the
         interpolated data for that attribute.
         """
@@ -170,14 +172,13 @@ class motion_data(object):
                 data = getattr(self, attribute)
                 times = self.times.astype('d')
 
-                #  if we're ignoring nans in the data, filter them out
+                #  filter out NaNs if needed
                 if ignore_nans:
                     nan_idx = np.isnan(data)
                     data = data[~nan_idx]
                     times = times[~nan_idx]
 
-                # Interpolate this attribute using the time vector in the
-                # provided ping_data object
+                # Interpolate this attribute
                 out_data[attribute] = np.interp(new_times.astype('d'),
                         times, data, left=np.nan, right=np.nan)
             except:
