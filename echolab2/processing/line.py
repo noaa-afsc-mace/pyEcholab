@@ -30,6 +30,7 @@
 
 import numpy as np
 from ..ping_data import ping_data
+from ..instruments.util import simrad_xyz
 
 
 class line(ping_data):
@@ -731,102 +732,31 @@ def read_evl(evl_filename, name='evl_line', ignore_status=False, **kwargs):
     return ev_line
 
 
-def read_xyz(xyz_filename, name='xyz_line', as_range=False, calibration=None,
-        **kwargs):
+def read_xyz(xyz_filename, name='xyz_line', as_range=False, **kwargs):
     '''read_xyz will read a Simrad EK80 .xyz file and return a line object
     containing the bottom detection data.
 
     xyz_filename (string): The full path to the .xyz file to read
+    as_range (bool): Set to True to return the detected bottom value as range
+        to bottom. The recorded transducer draft will be subtracted from
+        the bottom detection value.
     name (string): name or label for the line.
-
-    calibration (EK80.ek80_calibration): Set to an instance of EK80.ek80_calibration
-                containing the calibration parameters you used when transforming to
-                Sv/sv. The sound speed value in the calibration object will be used
-                to shift the bottom detections if the sound speed used during data
-                recording is different than the sound speed specified in this object.
-
     color: color is a list which defines the color of the line.
     linestyle: linestyle is a string that defines the style of the line.
     linewidth: linewidth is a float the defines the width of the line.
 
     '''
 
-    import os
-    from datetime import datetime
-
-    def convert_float(val):
-        try:
-            val = float(val)
-        except:
-            val = np.nan
-        return val
-
-    # Normalize filename and read the file
-    xyz_filename = os.path.normpath(xyz_filename)
-    with open(xyz_filename, 'r') as infile:
-        xyz_data = infile.readlines()
-
-    #  determine the number of line vertices
-    n_points = len(xyz_data)
-
-    # Simrad .xyz files contain Lat, Lon, depth, date, time, and transducer draft
-    depth_data = np.empty((n_points), dtype=np.float32)
-    lat_data = np.empty((n_points), dtype=np.float32)
-    lon_data = np.empty((n_points), dtype=np.float32)
-    draft_data = np.empty((n_points), dtype=np.float32)
-    ping_time = np.empty((n_points), dtype='datetime64[ms]')
-
-    # Loop thru the rows of data, parsing each line
-    for idx, row in enumerate(xyz_data):
-        #  split the row
-        parts = row.split()
-        n_parts = len(parts)
-
-        if n_parts == 8:
-            #  this is the XYZ format introduced in EK80 21.15.x with hemisphere
-            (lat, lat_h, lon, lon_h, depth, date, time, draft) = parts
-
-            #  convert lat/lon to floats
-            lat = convert_float(lat)
-            lon = convert_float(lon)
-
-            #  add the sign to the lat/lon
-            lat *= 1 if lat_h == 'N' else -1
-            lon *= 1 if lon_h == 'E' else -1
-
-        elif n_parts == 6:
-            #  this is the OG XYZ with signed lat/lon
-            (lat, lon, depth, date, time, draft) = parts
-
-            #  convert lat/lon to floats
-            lat = convert_float(lat)
-            lon = convert_float(lon)
-
-        else:
-            #  this XYZ file is not what we were expecting
-            raise Exception('Unknown XYZ format with %d fields' % n_parts)
-
-        # Convert the time elements to datetime64
-        ping_time[idx] = np.datetime64(datetime.strptime(date + time, "%d%m%Y%H%M%S.%f"))
-
-        # Convert depth and draft to floats
-        draft_data[idx] = convert_float(draft)
-        if as_range:
-            depth_data[idx] = convert_float(depth) - draft_data[idx]
-        else:
-            depth_data[idx] = convert_float(depth)
-
-        # Store lat and lon
-        lat_data[idx] = lat
-        lon_data[idx] = lon
+    #  read the XYZ file
+    xyz_data = simrad_xyz.read_xyz(xyz_filename, as_range=as_range)
 
     # Create the line object to return
-    xyz_line = line(ping_time=ping_time, data=depth_data, name=name, **kwargs)
+    xyz_line = line(ping_time=xyz_data['ping_time'], data=xyz_data['detected_bottom'], name=name, **kwargs)
 
     # Add the additional data attributes
-    xyz_line.add_data_attribute('latitude', lat_data)
-    xyz_line.add_data_attribute('longitude', lon_data)
-    xyz_line.add_data_attribute('transducer_draft', draft_data)
+    xyz_line.add_data_attribute('latitude', xyz_data['latitude'])
+    xyz_line.add_data_attribute('longitude', xyz_data['longitude'])
+    xyz_line.add_data_attribute('transducer_draft', xyz_data['transducer_draft'])
 
     return xyz_line
 

@@ -400,9 +400,28 @@ class calibration(object):
 
                 # Check if the param data is constant and return a scalar if so.
                 if param_data.dtype == object:
-                    if np.all(param_data == param_data[0]):
-                        # This param is constant
-                        param_data = param_data[0]
+                    if param_name == 'filters':
+                        #  the filter params are stored in a dict that contains numpy arrays
+                        #  and because of this they need to be handled as a special case.
+                        all_match = True
+                        for data in param_data:
+                            for stage in param_data[0]:
+                                for param in param_data[0][stage]:
+                                    if isinstance(param_data[0][stage][param], np.ndarray):
+                                        all_match &= np.all(param_data[0][stage][param] == data[stage][param])
+                                    else:
+                                        all_match &= param_data[0][stage][param] == data[stage][param]
+                        if all_match:
+                            param_data = param_data[0]
+                    else:
+                        #  this is not the filters attribute so do a regular compare
+                        try:
+                            if np.all(param_data == param_data[0]):
+                                # This param is constant
+                                param_data = param_data[0]
+                        except:
+                            print(param_name + " can't be compared!")
+                            pass
                 else:
                     if np.all(np.isclose(param_data, param_data[0])):
                         # This param is constant

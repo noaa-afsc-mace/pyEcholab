@@ -46,6 +46,7 @@ from .util.annotation_data import annotation_data
 from .util import simrad_signal_proc
 from .util import date_conversion
 from .util import simrad_parsers
+from .util import simrad_xyz
 from ..ping_data import ping_data
 from ..processing.processed_data import processed_data
 from ..processing import line
@@ -331,54 +332,39 @@ class EK80(object):
 
         """
 
-        def convert_float(val):
-            try:
-                val = float(val)
-            except:
-                val = np.nan
-            return val
-
         #  make sure the channel ID provided exists in our data.
         if channel_id in self.raw_data:
-            xyz_file = os.path.normpath(xyz_file)
+
             try:
-                with open(xyz_file, 'r') as infile:
-                    for xyz_line in infile:
+                #  read the XYZ file
+                xyz_data = simrad_xyz.read_xyz(xyz_file)
 
-                        #  split the row
-                        parts = xyz_line.split()
-                        n_parts = len(parts)
+                #  check each raw object for matched times
+                for raw_obj in self.raw_data[channel_id]:
 
-                        if n_parts == 8:
-                            #  this is the XYZ format introduced in EK80 21.15.x with hemisphere
-                            (lat, lat_h, lon, lon_h, depth, date, time, draft) = parts
-                        elif n_parts == 6:
-                            #  this is the OG XYZ with signed lat/lon
-                            (lat, lon, depth, date, time, draft) = parts
-                        else:
-                            #  malformed line, skip it
-                            continue
+                    if not hasattr(raw_obj, 'detected_bottom'):
+                        # This data object doesn't have the detected_bottom attribute.
+                        # Create and add it.
+                        new_attr = np.full((raw_obj.ping_time.shape), np.nan, np.float32)
+                        raw_obj.add_data_attribute('detected_bottom', new_attr)
 
-                        # Convert the time elements to datetime64
-                        ping_time = np.datetime64(datetime.strptime(date + time, "%d%m%Y%H%M%S.%f"))
-                        #  convert depth to float
-                        depth_data = convert_float(depth)
+                    #  We need to assign the bottom detections to pings but the ping times in an
+                    #  XYZ file are truncated to hundredths so don't exactly match the raw data
+                    #  ping times. This means that the times in the XYZ file will always be less
+                    #  than or equal to the ping times. First we use searchsorted as a vectorized
+                    #  method for finding the closest matches.
+                    ping_idxs = np.searchsorted(raw_obj.ping_time.astype('uint64'),
+                            xyz_data['ping_time'].astype('uint64'), side="left")
 
-                        #  check each raw object for a matched time
-                        for raw_obj in self.raw_data[channel_id]:
+                    #  Next step is to handle edge cases. searchsorted will gladly return indices
+                    #  outside the range of our raw data ping times so we need to filter those here.
+                    #  We add 10 ms on the lower end since truncated bottom detection times will be
+                    #  9 ms less than or equal to their corresponding ping times.
+                    good_idxs = np.logical_and(xyz_data['ping_time'].astype('uint64') + 10 > raw_obj.ping_time[0].astype('uint64'),
+                            xyz_data['ping_time'].astype('uint64') <= raw_obj.ping_time[-1].astype('uint64'))
 
-                            if not hasattr(raw_obj, 'detected_bottom'):
-                                # This data object doesn't have the detected_bottom attribute.
-                                # Create and add it.
-                                new_attr = np.full((raw_obj.ping_time.shape), np.nan, np.float32)
-                                raw_obj.add_data_attribute('detected_bottom', new_attr)
-
-                            # Get the index of this detection and insert into data object
-                            ping_idx = raw_obj.ping_time == ping_time
-                            raw_obj.detected_bottom[ping_idx] = depth_data
-
-                            #  there should only be one match so we move on
-                            break
+                    #  assign the matched bottom detections to the raw_data object
+                    raw_obj.detected_bottom[ping_idxs[good_idxs]] = xyz_data['detected_bottom'][good_idxs]
 
             except Exception as e:
                 raise IOError('Error reading XYZ file ' + xyz_file + ". " + str(e))
@@ -855,7 +841,6 @@ class EK80(object):
                 #  the initialparameter is a little different in that it appears
                 #  only once in the file after the config header before the filters.
                 self._initial_params = new_datagram[new_datagram['subtype']]
-                print(self._initial_params)
 
             elif new_datagram['subtype'] == 'pingsequence':
                 # The PingSequence datagram seems to come right before the
@@ -3400,14 +3385,12 @@ class raw_data(ping_data):
 
         # Get the power data - this step also resamples and arranges the raw data.
         p_data, return_indices = self._get_power(calibration=calibration, **kwargs)
-
-        p_data.power = p_data.data
+        #p_data.power = p_data.data
 
         # Set the data type and is_log attribute.
         if linear:
             attribute_name = 'sv'
             p_data.is_log = False
-
         else:
             attribute_name = 'Sv'
             p_data.is_log = True
@@ -3423,7 +3406,8 @@ class raw_data(ping_data):
 
         # Also create an attribute named after the data type that points to our data.
         # Some people think their code is more readable when they use the this label.
-        setattr(p_data, p_data.data_type, p_data.data)
+        p_data.add_data_attribute(p_data.data_type, p_data.data)
+        #setattr(p_data, p_data.data_type, p_data.data)
 
         # Check if we need to convert to depth
         if return_depth:
@@ -3945,6 +3929,11 @@ class raw_data(ping_data):
             A line object containing the sounder detected bottom depths.
 
         """
+
+        #  first check if we have any bottom detection data
+        if not hasattr(self, 'detected_bottom'):
+            #  we don't, return None
+            return None
 
         # Check if the user supplied an explicit list of indices to return.
         if isinstance(return_indices, np.ndarray):

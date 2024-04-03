@@ -140,10 +140,6 @@ class processed_data(ping_data):
         # offset away from the transducer face.
         self.sample_offset = 0
 
-        #self.range = None
-        #self.depth = None
-
-
         # Define the attribute names for "navigation" data. These are the
         # list of possible field names that store data related to the movement
         # and motion of the sampling platform.
@@ -1044,23 +1040,83 @@ class processed_data(ping_data):
         self.n_pings = self.ping_time.shape[0]
 
 
-    def set_motion(self, motion_obj):
+    def set_motion(self, motion_obj, filter_empty=True, motion_attributes=None,
+            **kwargs):
         """set_motion will extract and interpolate pitch, heave, roll, and
         heading data in the provided "motion object" to this object's time
-        axis and add them as attributes
+        axis and add them as attributes.
 
         The motion_object is stored in the motion_data attribute of the
         EK60/EK80 object.
 
         p_data.set_motion(ek80.motion_data)
+
+        motion_attributes (list): Set motion_attributes to a list of strings
+            specifying the motion attributes to add to your processed_data
+            object. By default, 'pitch', 'roll', 'heave', and 'heading' are
+            added. If your data contain extended motion attributes (i.e.
+            MRU1 datagrams) then these additional attributes can be added:
+
+                latitude
+                longitude
+                ellipsoid_height
+                roll_rate
+                pitch_rate
+                yaw_rate
+                north_velocity
+                east_velocity
+                down_velocity
+                latitude_error
+                longitude_error
+                height_error
+                roll_error
+                pitch_error
+                heading_error
+                heave_error
+                north_acceleration
+                east_acceleration
+                down_acceleration
+                delayed_heave_utc_second
+                delayed_heave_utc_nanoseconds
+                delayed_heave_m
+
+            It is up to you to use these wisely.
+
+            Default: ['pitch', 'roll', 'heave', 'heading']
+
+        filter_empty (bool): Set to True to filter motion data attributes
+            that don't seem to contain any data. The EK80 will generate motion
+            datagrams even if an IMU is not connected to the system resulting
+            in pitch, heave, and roll values of 0. When filter_empty is
+            set to True, these attributes will not be added.
+
+            Default: True
+
         """
-        motion_types = ['pitch', 'roll', 'heave', 'heading']
-        for type in motion_types:
+
+        if motion_attributes is None:
+            motion_attributes = ['pitch', 'roll', 'heave', 'heading']
+
+        for type in motion_attributes:
             #  get the interpolated data for this type
             attr_names, data = motion_obj.interpolate(self, type)
 
             # iterate through the returned data and add or update it
             for attr_name in attr_names:
+
+                #  check if this attribute exists in the motion data
+                if data[attr_name] is None:
+                    #  nope, the provided attribute doesn't exist
+                    continue
+
+                #  check if we have any data to add - we will assume if all data
+                #  elements are either NaN or zeros then there is no real data
+                no_data = np.all(np.logical_or(data[attr_name] == 0,
+                        np.isnan(data[attr_name])))
+                #  if there isn't any real data and we're filtering, move along.
+                if no_data and filter_empty:
+                    continue
+
                 #  check if we had data for this attribute
                 if attr_name in data:
                     #  yes - add or update it
@@ -1095,11 +1151,13 @@ class processed_data(ping_data):
         the nmea_data attribute.
 
         p_data.set_navigation(ek80.nmea_data)
+
         """
         # Define the message types we're going to try to add using the
         # nmea_data metatypes
-        nav_types = ['position', 'speed', 'attitude', 'distance']
-        for type in nav_types:
+        nav_attributes = ['position', 'speed', 'attitude', 'distance']
+
+        for type in nav_attributes:
             #  get the interpolated data for this type
             attr_names, data = nmea_obj.interpolate(self, type)
 
@@ -1885,19 +1943,24 @@ class processed_data(ping_data):
         #  print some more info about the processed_data instance
         n_pings = len(self.ping_time)
         if n_pings > 0:
-            msg =  msg + "                channel(s): [" + self.channel_id + "]\n"
-            msg = (msg + "            frequency (Hz): " + str(self.frequency)
-                   + "\n")
-            msg = (msg + "           data start time: " + str(self.ping_time[
-                                                                  0]) + "\n")
-            msg = (msg + "             data end time: " + str(self.ping_time[
-                                                                  n_pings-1])
-                   + "\n")
+            msg = msg + "                channel(s): [" + self.channel_id + "]\n"
+            msg = msg + "            frequency (Hz): " + str(self.frequency) + "\n"
+            msg = msg + "           data start time: " + str(self.ping_time[0]) + "\n"
+            msg = msg + "             data end time: " + str(self.ping_time[n_pings-1]) + "\n"
             msg = msg + "           number of pings: " + str(n_pings) + "\n"
-            msg = msg + "           data attributes:"
+            if 'range' in self._data_attributes:
+                msg = msg + "         number of samples: " + str(len(self.range)) + "\n"
+                msg = msg + "     vertical axis (range): %.2f - %.2f m\n" % (self.range[0], self.range[-1])
+            else:
+                msg = msg + "         number of samples: " + str(len(self.depth)) + "\n"
+                msg = msg + "     vertical axis (depth): %.2f - %.2f m\n" % (self.depth[0], self.depth[-1])
+            msg = msg + "         object attributes:"
             n_attr = 0
             padding = " "
             for attr_name in self._data_attributes:
+                #  skip printing the generic data reference
+                if attr_name in ['data']:
+                    continue
                 attr = getattr(self, attr_name)
                 if n_attr > 0:
                     padding = "                            "

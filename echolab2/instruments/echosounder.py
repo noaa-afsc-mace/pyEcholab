@@ -89,9 +89,9 @@ def read(files, ignore_errors=False, **kwargs):
 
     # if we're given a string, wrap it in a list
     if not isinstance(files, list):
-            files = [files]
+        files = [files]
 
-    #  initilaize s
+    #  set the default value for our data object
     data_object = None
 
     # Work through the list of input files
@@ -99,7 +99,11 @@ def read(files, ignore_errors=False, **kwargs):
         filename = os.path.normpath(item)
 
         # Determine what kind of data file we have
-        data_type = _check_filetype(filename)
+        try:
+            data_type = _check_filetype(filename)
+        except:
+            raise FileNotFoundError("Unable to open file: " + filename)
+
         if data_object is None:
             #  This is the first file we're reading so we need to create the data object
             if data_type == SIMRAD_EK60:
@@ -113,8 +117,8 @@ def read(files, ignore_errors=False, **kwargs):
                 raise UnknownFormatError("Unknown file type encountered: " + filename)
 
         #  check to make sure all of the files share the same file format
-        elif ((data_type == SIMRAD_EK60 and isinstance(data_object, EK80)) or
-              (data_type == SIMRAD_EK80 and isinstance(data_object, EK60))):
+        elif ((data_type == SIMRAD_EK60 and isinstance(data_object, EK80.EK80)) or
+              (data_type == SIMRAD_EK80 and isinstance(data_object, EK60.EK60))):
             # We've encountered a file with a different type than the initial file read
                 raise TypeError("Mixed Ex80 and Ex60 data files encountered. The echosounder " +
                         "module does not support reading mixed data file formats at one time. " +
@@ -129,9 +133,9 @@ def read(files, ignore_errors=False, **kwargs):
         if data_type == SIMRAD_EK80:
             #  Simrad EK80 systems can generate both XYZ and.or .bot files
             bot_type, bot_files = simrad_utils.get_simrad_bottom_files(filename, data_object)
-            if type == 'BOT':
+            if bot_type == 'BOT':
                 data_object.read_bot(bot_files)
-            elif type == 'XYZ':
+            elif bot_type == 'XYZ':
                 for channel_id in bot_files:
                     data_object.read_xyz(channel_id, bot_files[channel_id])
 
@@ -141,7 +145,6 @@ def read(files, ignore_errors=False, **kwargs):
                 skip_xyz=True)
             if bot_files:
                 data_object.read_bot(bot_files)
-
 
     return data_object
 
@@ -342,6 +345,7 @@ def get_Sv(data_object, calibration=None, frequencies=None,
             returned. If set to None, the last ping is set as the end ping.
 
             Default: None
+
     '''
 
     data = {}
@@ -375,8 +379,22 @@ def get_Sv(data_object, calibration=None, frequencies=None,
             #  add the navigation and motion data - this takes the asynchronous NMEA
             #  and motion data and interpolates it onto the ping time axis and stores
             #  the data in the processed data object.
+
+            #  first add the NMEA data - This will add the position, speed, attitude,
+            #  and distance meta-types (see instruments.util.nmea_data for more info)
             sv_data.set_navigation(data_object.nmea_data)
-            sv_data.set_motion(data_object.motion_data)
+
+            #  then add the motion data - we'll check if we have lat data from the NMEA
+            #  data and if not, try to get it from the motion data. Some EK80 configurations
+            #  may only store lat/lon in the motion data and not as NMEA data.
+            if not hasattr(sv_data, 'latitude'):
+                #  we didn't get lat/lon from the NMEA data so try to get it from motion data
+                sv_data.set_motion(data_object.motion_data, motion_attributes=['pitch',
+                        'roll', 'heave', 'heading', 'latitude', 'longitude'])
+            else:
+                #  we have lat (and presumably lon) data so we just get the "regular" motion
+                #  data (pitch, roll, heave, heading)
+                sv_data.set_motion(data_object.motion_data)
 
             #  apply heave correction if needed - this has no effect if heave
             #  data is not available.
@@ -388,25 +406,26 @@ def get_Sv(data_object, calibration=None, frequencies=None,
             #  from the sound speed at the time of collection.
             bottom_line = raw_obj.get_bottom(calibration=cal_obj, **kwargs)
 
-            #  Bottom data is always recorded as depth with heave correction applied,
-            #  so we need to back out transducer Z offset and/or heave (if applicable)
-            #  when returning sample data with range as the vertical axis
-            v_axis = sv_data.get_v_axis()[1]
-            if v_axis == 'range':
-                #  the transducer_draft attribute of the bottom line contains both
-                #  the z offset and heave. We simply subtract these values from the
-                #  line data to get the line in range.
-                bottom_line = bottom_line - bottom_line.transducer_draft
-            else:
-                #  we're returning data as depth. We don't need to back out transducer
-                #  z offset, but we have to back out heave correction if the user has
-                #  not heave corrected the sample data
-                if not heave_correct:
-                    #  heave correction is not set, subtract heave from the bottom line
-                    bottom_line = bottom_line - sv_data.heave
+            if bottom_line is not None:
+                #  Bottom data is always recorded as depth with heave correction applied,
+                #  so we need to back out transducer Z offset and/or heave (if applicable)
+                #  when returning sample data with range as the vertical axis
+                v_axis = sv_data.get_v_axis()[1]
+                if v_axis == 'range':
+                    #  the transducer_draft attribute of the bottom line contains both
+                    #  the z offset and heave. We simply subtract these values from the
+                    #  line data to get the line in range.
+                    bottom_line = bottom_line - bottom_line.transducer_draft
+                else:
+                    #  we're returning data as depth. We don't need to back out transducer
+                    #  z offset, but we have to back out heave correction if the user has
+                    #  not heave corrected the sample data
+                    if not heave_correct:
+                        #  heave correction is not set, subtract heave from the bottom line
+                        bottom_line = bottom_line - sv_data.heave
 
-            #  insert the bottom detection line into the processed data object
-            sv_data.bottom = bottom_line
+                #  insert the bottom detection line into the processed data object
+                sv_data.bottom_line = bottom_line
 
             #  and add the data to our return dict
             data[chan] = sv_data
