@@ -29,6 +29,7 @@
 """
 
 import numpy as np
+import xml.etree.ElementTree as ET
 
 class calibration(object):
     """
@@ -116,6 +117,36 @@ class calibration(object):
                                 'TwoWayBeamAngle':'equivalent_beam_angle',
                                 'Ek60TransducerGain':'gain',
                                 'SaCorrectionFactor':'sa_correction'}
+        
+        #  create a dict to map EK80 xml variables to Echolab cal object properties
+        self.XML_ECHOLAB_MAP = {'AbsorptionCoefficient':'absorption_coefficient',
+                                'Acidity':'acidity',
+                                'Frequency':'frequency',
+                                'BeamWidthAlongship':'beam_width_alongship',
+                                'BeamWidthAthwartship':'angle_offset_alongship',
+                                'BeamWidthAthwartship':'beam_width_athwartship',
+                                'AngleOffsetAthwartship':'angle_offset_athwartship',
+                                'AngleOffsetAlongship':'angle_offset_alongship',
+                                'AngleSensitivityAlongship':'',
+                                'AngleSensitivityAthwartship':'',
+                                'Salinity':'salinity',
+                                'SoundVelocity':'sound_speed',
+                                'Temperature':'temperature',
+                                'Gain':'gain',
+                                'TransmitPower':'transmit_power',
+                                'PulseLength':'pulse_length',
+                                'PulseForm':'',
+                                'Slope':'',
+                                'EquivalentBeamAngle':'equivalent_beam_angle',
+                                'SaCorrection':'sa_correction',
+                                'TsRmsError':'',
+                                'Impedance':'',
+                                'Phase':'',
+                                'SampleInterval':'',
+                                'BeamType':'',
+                                'MainOperation':'',
+                                'FrequencyStart':'frequency_start',
+                                'FrequencyEnd':'frequency_end'}   
 
         # Set the initial calibration property values.
         self.channel_id = None
@@ -381,6 +412,37 @@ class calibration(object):
                         #  not really sure what to do with localcal settings
                         raise NotImplementedError('LOCALCAL settings are currently not implemented.')
 
+    def read_xml_file(self, xml_file):
+            """Read in EK80 simrad file and parses out the parameters for a given channel.
+            """
+            
+            def parse_xml_param(param, value):
+
+                #  try to map this parameter to this cal object's attribute
+                try:
+                    our_param = self.XML_ECHOLAB_MAP[param]
+                except:
+                    raise NotImplementedError('XML parameter ' + param +
+                            ' is not implemented.')
+                
+                #  try to convert to a float
+                try:
+                    value = float(value)
+                except:
+                    try:
+                        value.strip()
+                    except: # There are some cases where EK80 returns an empty tag
+                        value = None
+
+                return our_param, value
+            
+            tree = ET.parse(xml_file)
+            root = tree.getroot()
+
+            for tag in ['CalibrationResults','Common/EnvironmentData','Common/TransceiverSetting','Common/PreviousModelParameters']:
+                for res in root.findall('./Calibration/'+tag)[0]:
+                    param, value = parse_xml_param(res.tag,res.text)
+                    setattr(self, param, value)
 
     def get_attribute_from_raw(self, raw_data, param_name, return_indices=None):
         """get_attribute_from_raw gets an individual attribute using the data
