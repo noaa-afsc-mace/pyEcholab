@@ -1,3 +1,37 @@
+# coding=utf-8
+
+#    National Oceanic and Atmospheric Administration
+#    Alaskan Fisheries Science Center
+#    Resource Assessment and Conservation Engineering
+#    Midwater Assessment and Conservation Engineering
+
+# THIS SOFTWARE AND ITS DOCUMENTATION ARE CONSIDERED TO BE IN THE PUBLIC DOMAIN
+# AND THUS ARE AVAILABLE FOR UNRESTRICTED PUBLIC USE. THEY ARE FURNISHED "AS
+# IS." THE AUTHORS, THE UNITED STATES GOVERNMENT, ITS INSTRUMENTALITIES,
+# OFFICERS, EMPLOYEES, AND AGENTS MAKE NO WARRANTY, EXPRESS OR IMPLIED, AS TO
+# THE USEFULNESS OF THE SOFTWARE AND DOCUMENTATION FOR ANY PURPOSE.  THEY
+# ASSUME NO RESPONSIBILITY (1) FOR THE USE OF THE SOFTWARE AND DOCUMENTATION;
+# OR (2) TO PROVIDE TECHNICAL SUPPORT TO USERS.
+
+'''
+.. module:: echolab2.instruments.util.simrad_utils
+
+    :synopsis:  This module provides helper functions for working with Simrad
+                echosounder data.
+
+| Developed by:  Rick Towler   <rick.towler@noaa.gov>
+| National Oceanic and Atmospheric Administration (NOAA)
+| Alaska Fisheries Science Center (AFSC)
+| Midwater Assesment and Conservation Engineering Group (MACE)
+|
+| Authors:
+|       Rick Towler   <rick.towler@noaa.gov>
+| Maintained by:
+|       Rick Towler   <rick.towler@noaa.gov>
+
+$Id$
+'''
+
 import os
 
 
@@ -47,20 +81,32 @@ def get_simrad_bottom_files(datafile_name, data_object, prefer_xyz=True, skip_xy
     return type, bottom_files
 
 
-def get_xyz_filenames(basename, data_object):
+def get_xyz_filenames(basename, data_object, raw_index=0):
 
     #  look for XYZ files adjacent to the datafile
     xyz_files = {}
     for channel_id in data_object.raw_data:
 
-        #  the echosounder interface always assumes the user is working with a single
-        #  datatype within a channel so it always grabs the first raw_data object from
-        #  each channel's list of raw_data objects
-        raw_obj = data_object.raw_data[channel_id][0]
+        #  By default we assume the user is working with a single data type and
+        #  we grab the first raw_data object in the channel's list of raw objects.
+        #  If you're reading multiple files containing different data types, you
+        #  may need to set the raw_index value when calling this function.
+        raw_obj = data_object.raw_data[channel_id][raw_index]
+
+        #  check for a MUX/Sequence ID
+        mux_id = channel_id.split('_')
+        if len(mux_id) > 1:
+            mux_id = mux_id[1]
+        else:
+            mux_id = ''
 
         #  generate the xyz file channel id using the "short" id and
         #  replacing the colon (illegal filename character) with a space
         xyz_id = raw_obj.configuration[-1]['channel_id_short'].replace(':',' ')
+
+        #  add the mux/sequence ID
+        if mux_id:
+            xyz_id += '-' + mux_id
 
         #  and build the xyz filename
         xyz_filename = basename + '-' + xyz_id + '.XYZ'
