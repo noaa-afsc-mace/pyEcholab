@@ -131,13 +131,11 @@ def nt_to_unix(nt_timestamp_tuple, return_datetime=True):
 
     lowDateTime, highDateTime = nt_timestamp_tuple
 
-    sec_past_nt_epoch = ((highDateTime << 32) + lowDateTime) * 1.0e-7
-    us_past_nt_epoch = ((highDateTime << 32) + lowDateTime) // 10
-
     if return_datetime:
+        us_past_nt_epoch = ((highDateTime << 32) + lowDateTime) // 10
         return UTC_NT_EPOCH + datetime.timedelta(microseconds=us_past_nt_epoch)
-
     else:
+        sec_past_nt_epoch = ((highDateTime << 32) + lowDateTime) * 1.0e-7
         sec_past_unix_epoch = sec_past_nt_epoch - EPOCH_DELTA_SECONDS
         return sec_past_unix_epoch
 

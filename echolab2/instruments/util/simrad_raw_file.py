@@ -33,9 +33,24 @@
 |       Rick Towler   <rick.towler@noaa.gov>
 
 $Id$
+
+
+
+Simrad .raw datagram format
+
+|  size  4 bytes   |             header  12 bytes                 |         data            | size check 4 bytes |
+|------------------|----------------------------------------------|-------------------------|--------------------|
+|    dgram size    |     dgram type      |      dgram time        |       dgram payload     |     dgram size     |
+|   4b as int32    |    4b as string     |   8b as two uint32     |  dgram size - 12 bytes  |    4b as int32     |
+| dgram total size | bytes 1-3 are type  | bytes 1-4 NT Time low  |     content varies      | should match first |
+| header + payload | byte 4 is version   | bytes 5-8 NT time high |                         |    first size      |
+|------------------|---------------------|------------------------|-------------------------|--------------------|
+
+
 '''
 
 from io import BufferedReader, FileIO, SEEK_SET, SEEK_CUR, SEEK_END
+import datetime
 import struct
 import logging
 import re
@@ -44,6 +59,8 @@ from . import simrad_parsers
 __all__ = ['RawSimradFile']
 
 log = logging.getLogger(__name__)
+
+UTC_NT_EPOCH = datetime.datetime(1601, 1, 1, 0, 0, 0)#, tzinfo=pytz_utc)
 
 class SimradEOF(Exception):
 
@@ -238,7 +255,11 @@ class RawSimradFile(BufferedReader):
         #  add the timestamp bytes to the raw_bytes string
         raw_bytes += buf
 
-        return dict(size=dgram_size, type=dgram_type, low_date=lowDateField, high_date=highDateField, raw_bytes=raw_bytes)
+        #  set the total bytes of this datagram including header and trailing size
+        bytes_read = dgram_size + 20
+
+        return dict(size=dgram_size, type=dgram_type, low_date=lowDateField,
+                high_date=highDateField, raw_bytes=raw_bytes, bytes_read=bytes_read)
 
 
     def _read_bytes(self, k):
@@ -249,7 +270,7 @@ class RawSimradFile(BufferedReader):
         return BufferedReader.read(self, k)
 
 
-    def _read_next_dgram(self):
+    def _read_next_dgram(self, header=None):
         '''
         Attempts to read the next datagram from the file.
 
@@ -263,15 +284,22 @@ class RawSimradFile(BufferedReader):
         #  allows us to pass them onto the parser without having to
         #  rewind and read again as was previously done.
 
-        #  store our current location in the file
-        old_file_pos = self._tell_bytes()
-
         #  try to read the header of the next datagram
-        try:
-            header = self._read_dgram_header()
-        except DatagramReadError as e:
-            e.message = 'Short read while getting raw file datagram header'
-            raise e
+        if header is None:
+            #  store our current location in the file
+            old_file_pos = self._tell_bytes()
+
+            try:
+                #  read the datagram header
+                header = self._read_dgram_header()
+            except DatagramReadError as e:
+                e.message = 'Short read while getting raw file datagram header'
+                raise e
+
+        else:
+            #  we've already read the header so subtract 16 bytes from the
+            #  current position.
+            old_file_pos = self._tell_bytes() - 16
 
         #  basic sanity check on size
         if header['size'] < 16:
@@ -402,7 +430,7 @@ class RawSimradFile(BufferedReader):
         if old_pos == eof_pos:
             return True
 
-        #Othereise, go back to where we were and re-raise the original
+        #Otherwise, go back to where we were and re-raise the original
         #exception
         else:
             offset = old_pos - eof_pos
@@ -410,19 +438,19 @@ class RawSimradFile(BufferedReader):
             return False
 
 
-    def read(self, k):
+    def read(self, k, header=None):
         '''
         :param k: Number of datagrams to read
         :type k: int
 
         Reads the next k datagrams.  A list of datagrams is returned if k > 1.  The entire
-        file is read from the CURRENT POSITION if k < 0. (does not necessarily read from begining
+        file is read from the CURRENT POSITION if k < 0. (does not necessarily read from beginning
         of file if previous datagrams were read)
         '''
 
         if k == 1:
             try:
-                return self._read_next_dgram()
+                return self._read_next_dgram(header=header)
             except Exception:
                 if self.at_eof():
                     raise SimradEOF()
@@ -521,24 +549,78 @@ class RawSimradFile(BufferedReader):
         return self._current_dgram_offset
 
 
-    def peek(self):
+    def get_header(self):
+        '''
+        Returns the header of the next datagram *without* resetting the file
+        position. The file pointer will be pointing at the first byte of the
+        datagram payload.
+
+        Use this method to query a datagram type prior to reading or skipping
+        a datagram. You must pass the header obtained to your call to read or
+        skip to prevent those methods from trying to read the header again.
+
+        This method returns a dict containing the header information along with
+        some additional helpful fields:
+
+                type: The datagram type, including version e.g. RAW3, NME0
+                low_date: The low 8 bytes of the datagram time as NT time
+                high_date: The high 8 bytes of the datagram time as NT time
+                timestamp: The datagram time as datetime64
+                size: The size of the datagram payload in bytes
+                raw_byts: The raw bytes of the header
+                bytes_read: The TOTAL bytes of this datagram including size
+                            and size check
+                channel: (Only for RAW* datagrams) the channel this RAW datagram
+                         is associated with
+
+        '''
+        #  call peek but don't rewind the pointer
+        dgram_header = self.peek(rewind=False)
+
+        #  add some convenience values to the header dict
+        us_past_nt_epoch = ((dgram_header['high_date'] << 32) + dgram_header['low_date']) // 10
+        dgram_header['timestamp'] = UTC_NT_EPOCH + datetime.timedelta(microseconds=us_past_nt_epoch)
+        dgram_header['bytes_read'] = dgram_header['size'] + 20
+
+        return dgram_header
+
+
+    def peek(self, rewind=True):
         '''
         Returns the header of the next datagram in the file.  The file position is
         reset back to the original location afterwards.
 
-        :returns: [dgram_size, dgram_type, (low_date, high_date)]
+        Set rewind to False to leave the file pointer at the first byte of the
+        datagram payload. This is equivalent to the _get_datagram_header() method
+        while also including channel information.
+
+        :returns: [dgram_size, dgram_type, (low_date, high_date), channel_id]
         '''
 
+        #  read the next dgram header
         dgram_header = self._read_dgram_header()
+
         if dgram_header['type'].startswith('RAW0'):
             dgram_header['channel'] = struct.unpack('h', self._read_bytes(2))[0]
-            self._seek_bytes(-18, SEEK_CUR)
+            if rewind:
+                #  rewind to the beginning of the datagram
+                self._seek_bytes(-18, SEEK_CUR)
+            else:
+                #  rewind to the beginning of the payload
+                self._seek_bytes(-2, SEEK_CUR)
         elif dgram_header['type'].startswith('RAW3') or dgram_header['type'].startswith('RAW4'):
-            chan_id = struct.unpack('128s', self._read_bytes(128))
-            dgram_header['channel_id'] = chan_id.strip('\x00')
-            self._seek_bytes(-(16 + 128), SEEK_CUR)
+            chan_id = struct.unpack('128s', self._read_bytes(128))[0]
+            dgram_header['channel_id'] = chan_id.strip(b'\x00')
+            if rewind:
+                #  rewind to the beginning of the datagram
+                self._seek_bytes(-144, SEEK_CUR)
+            else:
+                #  rewind to the beginning of the payload
+                self._seek_bytes(-128, SEEK_CUR)
         else:
-            self._seek_bytes(-16, SEEK_CUR)
+            #  The file pointer is always pointing at the payload for non RAW datagrams.
+            if rewind:
+                self._seek_bytes(-16, SEEK_CUR)
 
         return dgram_header
 
@@ -562,14 +644,16 @@ class RawSimradFile(BufferedReader):
         return raw_dgram
 
 
-    def skip(self):
+    def skip(self, header=None):
         '''
         Skips forward to the next datagram without reading the contents of the current one
+
+        If header is provided, it is assumed that the get_header() method has been called
+        and that the file pointer is at the payload.
         '''
 
-        # dgram_size, dgram_type, (low_date, high_date) = self.peek()[:3]
-
-        header = self.peek()
+        if header is None:
+            header = self._read_dgram_header()
 
         if header['size'] < 16:
             log.warning('Invalid datagram header: size: %d, type: %s, nt_date: %s.  dgram_size < 16',
@@ -578,7 +662,10 @@ class RawSimradFile(BufferedReader):
             self._find_next_datagram()
 
         else:
-            self._seek_bytes(header['size']+4, SEEK_CUR)
+            #  jump past the datagram payload
+            self._seek_bytes(header['size'] - 12, SEEK_CUR)
+
+            #  check the trailing size
             dgram_size_check = self._read_dgram_size()
 
             if header['size'] != dgram_size_check:
@@ -588,12 +675,15 @@ class RawSimradFile(BufferedReader):
 
                 self._find_next_datagram()
 
+        #  increment our datagram counter
         self._current_dgram_offset += 1
 
 
     def skip_back(self):
         '''
         Skips backwards to the previous datagram without reading it's contents
+
+        THIS IS PROBABLY BROKEN
         '''
 
         old_file_pos = self._tell_bytes()

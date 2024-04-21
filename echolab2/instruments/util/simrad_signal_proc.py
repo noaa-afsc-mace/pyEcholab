@@ -227,7 +227,7 @@ def filter_and_decimate(y, filters, stages, rx_sample_frequency):
 def calc_hanning_window(raw_data, calibration, return_indices=None, fast=False,
         **kwargs):
 
-    '''calc_hanning_window computes the 
+    '''calc_hanning_window computes the
 
 
         Length of Hanning window currently chosen as 2^k samples for
@@ -245,7 +245,7 @@ def calc_hanning_window(raw_data, calibration, return_indices=None, fast=False,
     fast (bool) - Set to true to assume all pings share the same Tx
                   signal. This keyword will be ignored if the provided
                   calibration object has cached tx signal attributes
-                  since 
+                  since
 
     '''
 
@@ -256,19 +256,19 @@ def calc_hanning_window(raw_data, calibration, return_indices=None, fast=False,
     # Ensure that return_indices is a numpy array
     elif type(return_indices) is not np.ndarray:
         return_indices = np.array(return_indices, ndmin=1)
-        
+
     # Check if there is cached intermediate values and if they are the
     # correct dimensions
     cal_has_tx_data = False
     if hasattr(calibration, '_tx_signal'):
         if fast or (calibration._tau_eff.shape[0] == return_indices.shape[0]):
             cal_has_tx_data = True
-    
+
     # No cached data, we need to compute it
     if not cal_has_tx_data:
         _, _ = create_ek80_tx(raw_data, calibration, return_indices=return_indices,
                 fast=fast, **kwargs)
-                
+
     #  specify the cal params we need and get them
     cal_parms = {'sample_interval':None,
                  'pulse_duration':None,
@@ -280,26 +280,26 @@ def calc_hanning_window(raw_data, calibration, return_indices=None, fast=False,
     if fast:
         # If the fast keyword is set, we assume all of the pings will  be the same
         # so we only compute the hanning window for the first requested return index.
-        
+
         #  set return_indices to the first requested index
         return_indices = np.array(return_indices[0], ndmin=1)
-        
+
         # Compute the sample thickness
         thickness = cal_parms['sample_interval'][0] * cal_parms['sound_speed'][0] / 2.0
-    
+
         # Compute the filter length using parameters from the first returned ping.
         L = (cal_parms['sound_speed'][0] * 2 * cal_parms['pulse_duration'][0]) / thickness
-        
+
         # Compute the length of the window for each ping
         N_w = np.array(2 ** np.ceil(np.log2(L)).astype('int32'), ndmin=1)
-        
+
     else:
         # Fast keyword is unset - we compute hanning windows and associated params for
         # all return indices.
-        
+
         # Compute the filter length by ping.
         L = (cal_parms['sound_speed'] * 2 * cal_parms['pulse_duration'][0]) / thickness
-        
+
         # Compute the length of the window for each ping
         N_w = 2 ** np.ceil(np.log2(L)).astype('int32')
         # or : N_w = np.ceil(2 ** np.log2(L))
@@ -311,15 +311,15 @@ def calc_hanning_window(raw_data, calibration, return_indices=None, fast=False,
     t_w_n = []
 
     for idx, ping_index in enumerate(return_indices):
-        
+
         t_w_n.append(np.arange(0, N_w[idx]) / calibration._rx_sample_frequency_decimated[idx])
         t_w[idx] = N_w[idx] / calibration._rx_sample_frequency_decimated[idx]
         n_h = np.arange(0, N_w[idx])
         w_i =  0.5 * (1.0 - np.cos(2.0 * np.pi * n_h / (N_w[idx] - 1)))
         w_tilde_i.append(w_i / (np.linalg.norm(w_i) / np.sqrt(N_w[idx])))
-    
+
     return w_tilde_i, N_w, t_w, t_w_n
-        
+
 
 def calc_DFT_for_Sv(y_pc_s_n, w_tilde_i, y_mf_auto_n, N_w,
                  n_f_points, f_m, f_s_dec, r_c_n, step):
@@ -373,7 +373,7 @@ def calc_DFT_for_Sv(y_pc_s_n, w_tilde_i, y_mf_auto_n, N_w,
     return Y_pc_v_m_n, Y_mf_auto_m, Y_tilde_pc_v_m_n, svf_range
 
 
-        
+
 def ek80_chirp2(f0, f1, slope, tau, fs):
     '''ek80_chirp2 returns a representation of the EK80 transmit signal
     as (time, amplitude) with a maximum amplitude of 1. This method was
@@ -504,8 +504,8 @@ def pulse_compression(raw_data, calibration, return_indices=None, fast=False):
                 filtered = np.convolve(p_data[p_idx,:,q_idx], tx_mf) / tx_n
                 # remove filter delay
                 p_data[p_idx,:,q_idx] = filtered[ltx-1:]
-                    
-        
+
+
 #        convolve = np.vectorize(np.convolve, signature='(n),(m)->(k)')
 #convolve(np.eye(4), [1, 2, 1])
 #array([[1., 2., 1., 0., 0., 0.],

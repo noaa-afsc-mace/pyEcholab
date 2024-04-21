@@ -656,9 +656,11 @@ class EK60(object):
         #  create the return dict that provides feedback on progress
         result = {'bytes_read':0, 'timestamp':None, 'type':None, 'finished':False}
 
-        #  attempt to read the next datagram
+        #  peek at the next datagram to get some basic info. We'll
+        #  determine if we should read or skip this datagram below
         try:
-            new_datagram = fid.read(1)
+            #  get the next datagram's type
+            dgram_header = fid.get_header()
         except SimradEOF:
             #  we're at the end of the file
             result['finished'] = True
@@ -666,32 +668,34 @@ class EK60(object):
 
         # Convert the timestamp to a datetime64 object.
         # Check for NULL DG date which is returned as datetime.datetime(1601, 1, 1, 0, 0)
-        if new_datagram['timestamp'].year < 1900:
+        if dgram_header['timestamp'].year < 1900:
             # This datagram has NULL date/time values
-            new_datagram['timestamp'] = np.datetime64("NaT")
+            dgram_header['timestamp'] = np.datetime64("NaT")
         else:
             # We have a plausible date/time value
-            new_datagram['timestamp'] = \
-                    np.datetime64(new_datagram['timestamp'], '[ms]')
+            dgram_header['timestamp'] = \
+                    np.datetime64(dgram_header['timestamp'], '[ms]')
 
         #  update the return dict properties
-        result['timestamp'] = new_datagram['timestamp']
-        result['bytes_read'] = new_datagram['bytes_read']
-        result['type'] = new_datagram['type']
+        result['timestamp'] = dgram_header['timestamp']
+        result['bytes_read'] = dgram_header['bytes_read']
+        result['type'] = dgram_header['type']
 
         # If this is a NMEA datagram and we're not storing them, bail
-        if not nmea and new_datagram['type'].startswith('NME'):
+        if not nmea and dgram_header['type'].startswith('NME'):
             # This is a NMEA datagram and we're skipping them
+            fid.skip(header=dgram_header)
             return result
 
         # Check if data should be stored based on time bounds.
         if self.read_start_time is not None:
-            if new_datagram['timestamp'] < self.read_start_time:
+            if dgram_header['timestamp'] < self.read_start_time:
                 #  we have a start time but this data comes before it
                 #  so we return without doing anything else
+                fid.skip(header=dgram_header)
                 return result
         if self.read_end_time is not None:
-            if new_datagram['timestamp'] > self.read_end_time:
+            if dgram_header['timestamp'] > self.read_end_time:
                 #  we have a end time and this data comes after it
                 #  so we are actually done reading - set the finished
                 #  field in our return dict and return
@@ -699,25 +703,24 @@ class EK60(object):
                 return result
 
         #  update the ping counter
-        if new_datagram['type'].startswith('RAW'):
+        if dgram_header['type'].startswith('RAW'):
             #  make sure this is a unique time
-            if self._this_ping_time != new_datagram['timestamp']:
+            if self._this_ping_time != dgram_header['timestamp']:
                 self.n_pings += 1
-                self._this_ping_time = new_datagram['timestamp']
+                self._this_ping_time = dgram_header['timestamp']
 
             # check if we're storing this channel
-            if new_datagram['channel'] not in self._file_channel_map.keys():
+            if dgram_header['channel'] not in self._file_channel_map.keys():
                 #  no, it's not in the list - just return
+                fid.skip(header=dgram_header)
                 return result
-            else:
-                #  add the channel_id to our datagram
-                new_datagram['channel_id'] = self._file_channel_map[new_datagram['channel']]
 
         # Check if we should store this data based on ping bounds.
         if self.read_start_ping is not None:
             if self.n_pings < self.read_start_ping:
                 #  we have a start ping but this data comes before it
                 #  so we return without doing anything else
+                fid.skip(header=dgram_header)
                 return result
         if self.read_end_ping is not None:
             if self.n_pings > self.read_end_ping:
@@ -726,6 +729,15 @@ class EK60(object):
                 #  field in our return dict and return
                 result['finished'] = True
                 return result
+
+        #  if we're here, we're reading the datagram
+        try:
+            #  pass the datagram header and read the rest of the datagram
+            new_datagram = fid.read(1, header=dgram_header)
+        except SimradEOF:
+            #  we're at the end of the file
+            result['finished'] = True
+            return result
 
         # Update the end_time property.
         if self.end_time is not None:
@@ -748,6 +760,9 @@ class EK60(object):
                 self.start_ping = self.n_pings
             # Update the last ping number.
             self.end_ping = self.n_pings
+
+            #  add the channel_id to our datagram
+            new_datagram['channel_id'] = self._file_channel_map[new_datagram['channel']]
 
             #  loop through the raw_data objects to find the raw_data object
             #  to store this data.
