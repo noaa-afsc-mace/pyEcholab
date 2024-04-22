@@ -687,6 +687,19 @@ class EK60(object):
             fid.skip(header=dgram_header)
             return result
 
+        #  update the ping counter
+        if dgram_header['type'].startswith('RAW'):
+            #  make sure this is a unique time
+            if self._this_ping_time != dgram_header['timestamp']:
+                self.n_pings += 1
+                self._this_ping_time = dgram_header['timestamp']
+
+            # check if we're storing this channel
+            if dgram_header['channel'] not in self._file_channel_map.keys():
+                #  no, it's not in the list - just return
+                fid.skip(header=dgram_header)
+                return result
+
         # Check if data should be stored based on time bounds.
         if self.read_start_time is not None:
             if dgram_header['timestamp'] < self.read_start_time:
@@ -700,19 +713,6 @@ class EK60(object):
                 #  so we are actually done reading - set the finished
                 #  field in our return dict and return
                 result['finished'] = True
-                return result
-
-        #  update the ping counter
-        if dgram_header['type'].startswith('RAW'):
-            #  make sure this is a unique time
-            if self._this_ping_time != dgram_header['timestamp']:
-                self.n_pings += 1
-                self._this_ping_time = dgram_header['timestamp']
-
-            # check if we're storing this channel
-            if dgram_header['channel'] not in self._file_channel_map.keys():
-                #  no, it's not in the list - just return
-                fid.skip(header=dgram_header)
                 return result
 
         # Check if we should store this data based on ping bounds.

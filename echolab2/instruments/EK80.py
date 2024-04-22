@@ -35,7 +35,6 @@ $Id$
 
 import os
 import re
-import datetime
 import numpy as np
 from scipy.interpolate import interp1d
 from .util.simrad_calibration import calibration
@@ -61,9 +60,9 @@ class EK80(object):
     channel, or create processed_data objects containing.
 
     Attributes:
-        start_time: Start_time is a datetime object that defines the start
+        start_time: Start_time is a datetime64 object that defines the start
             time of the data within the EK80 class
-        end_time: End_time is a datetime object that defines the end time of
+        end_time: End_time is a datetime64 object that defines the end time of
             the data within the EK80 class
         start_ping: Start_ping is an integer that defines the first ping of the
             data within the EK80 class.
@@ -824,6 +823,12 @@ class EK80(object):
                 fid.skip(header=dgram_header)
                 return result
 
+            #  update the ping counter
+            if dgram_header['type'].startswith('RAW'):
+                if self._this_ping_time != dgram_header['timestamp']:
+                    self.n_pings += 1
+                    self._this_ping_time = dgram_header['timestamp']
+
             # Check if data should be stored based on time bounds.
             if self.read_start_time is not None:
                 if dgram_header['timestamp'] < self.read_start_time:
@@ -838,12 +843,6 @@ class EK80(object):
                     #  field in our return dict and return
                     result['finished'] = True
                     return result
-
-            #  update the ping counter
-            if dgram_header['type'].startswith('RAW'):
-                if self._this_ping_time != dgram_header['timestamp']:
-                    self.n_pings += 1
-                    self._this_ping_time = dgram_header['timestamp']
 
             # Check if we should store this data based on ping bounds.
             if self.read_start_ping is not None:
@@ -2346,7 +2345,7 @@ class raw_data(ping_data):
 
             ping_number (int): Set to an integer indicating the ping number where the
                 data should be inserted.
-            ping_time (datetime):Set to an integer indicating the ping number where the
+            ping_time (datetime64):Set to an integer indicating the ping number where the
                 data should be inserted.
             index_array (array):Set to a numpy array that is the same length
                 as the raw_data object you're inserting where each element is

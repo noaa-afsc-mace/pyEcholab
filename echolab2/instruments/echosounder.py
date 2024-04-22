@@ -17,7 +17,7 @@
 .. module:: echolab2.instruments.echosounder
 
     :synopsis:  The top level interface for reading data files collected
-                using scientific echosunders commonly used in fisheries
+                using scientific echosounders commonly used in fisheries
                 stock assessment and research.
 
     The echosounder module provides a simplified interface for reading raw data
@@ -34,11 +34,15 @@
 
         All files passed to the read() function will contain the same data type.
         The data types are power only, angles only, power+angles, and complex.
+        Mixing types will not result in an error, but only one type of data
+        will be returned.
 
     If you need to read different formats, or different data types you can read
     them separately and combine after they have been read and converted, or you
     can implement something more complex using the EK60 and/or EK80 objects
     directly.
+
+
 
 
 | Developed by:  Rick Towler   <rick.towler@noaa.gov>
@@ -63,13 +67,9 @@ from .util import simrad_utils
 SIMRAD_EK60 = 0
 SIMRAD_EK80 = 1
 
-
-
-
 def read(files, ignore_errors=False, **kwargs):
-    """read reads one or more Simrad EK60 style *OR* EK80 style .raw echosounder
-    data files and returns a EK60 or EK80 object containing the data. Supported
-    systems are:
+    """read reads one or more Simrad EK60 style *OR* EK80 style .raw data files
+    and returns a EK60 or EK80 object containing the data. Supported systems are:
 
         Simrad EK60, ES60, ME70, ES70, EK80, ES80
 
@@ -84,6 +84,96 @@ def read(files, ignore_errors=False, **kwargs):
     convention. Supported formats include only .bot and .xyz files (default
     preference is for .xyz.) While the underlying classes support reading .out
     files, this simplified interface does not.
+
+    Args:
+            files (list): List containing full paths to data file or files
+                to be read. Required.
+
+        Additional arguments can be passed to control what data is read from
+        the file. The follow arguments will filter data when reading, jumping
+        over datagrams that aren't specified to be read. Arguments can be
+        combined
+
+            frequencies (list): List of floats specifying the frequency or
+                frequencies you want to read from the file. Data from other
+                frequencies will be ignored. Set to None to read all frequencies.
+
+                Default: None
+
+            channel_ids (list): A list of strings that contain the unique
+                channel IDs to read. Set to None to read all channels in the
+                file.
+
+                Default: None
+
+            start_time (datetime64): Specify a start time if you do not want
+                to start reading from the first ping. Set to None to start
+                reading from the first ping.
+
+                Default: None
+
+            end_time (datetime64): Specify an end time if you do not want to read
+                to the last ping.  Set to None to read through the last ping.
+
+                Default: None
+
+            start_ping (int): Specify starting ping number if you do not want
+                to start reading at first ping. Set to None to start reading from
+                the first ping. Ping numbers start at 1 and increment for each
+                distinct transmission time encountered in the data file(s) passed
+                to echosounder.read().
+
+                Default: None
+
+            end_ping (int): Specify end ping number if you do not want
+                to read all pings. Set to None to read through the last ping.
+                Ping numbers start at 1 and increment for each distinct transmission
+                time encountered in the data file(s) passed to echosounder.read().
+
+                Default: None
+
+            nmea (bool): Set to True to store NMEA data. When set to False,
+                all NMEA datagrams are skipped.
+
+                Default: True
+
+
+        These arguments also filter what data is stored, but they are applied after
+        the filtering performed by the keywords above. These filters require reading
+        and parsing of the raw datagrams so they are not as efficient as the filters
+        above but hey will still allow you to manage memory usage.
+
+
+            power (bool): Controls whether power data is stored. Set to True
+                to store power data. False to ignore it.
+
+                Default: True
+
+            angles (bool): Controls whether angle data is stored. Set to True
+                to store angle data. False to ignore it.
+
+                Default: True
+
+            complex (bool): Controls whether complex data is stored. Set to True
+                to store cinplex data. False to ignore it.
+
+                Default: True
+
+            max_sample_count (int): Specify the max sample count to read if your
+                data of interest is less than the total number of samples contained
+                in the instrument files. Set to None to read all samples.
+
+                Default: None
+
+            start_sample (int): Specify starting sample number to store. Set to
+                None to store samples starting from the first sample in the ping.
+
+                Default: None
+
+            end_sample (int): Specify ending sample number to store. Set to None to
+                store through the last sample in the ping.
+
+                Default: None
 
     """
 
@@ -265,60 +355,24 @@ def get_calibration_from_ecs(data_object, ecs_file, channel_map=None, **kwargs):
         calibrations[chan].read_ecs_file(ecs_file, ev_cal_label)
 
 
-def get_Sv(data_object, calibration=None, frequencies=None,
-        channels=None, heave_correct=False, **kwargs):
-    '''get_Sv returns a dictionary, keyed by channel ID, containing
-        aprocessed_data objects containing Sv or sv data.
+def get_Sv(data_object, linear=True, **kwargs):
+    '''get_Sv returns a dictionary, keyed by channel ID, containing processed
+        data object(s) containing Sv data.
 
-        The frequencies and channels keywords can be set to limit what
-        data is returned. These keywords can be applied together.
+        The frequencies, channel_ids, ping, and time range keywords can be set
+        to limit what data is returned. These keywords can be applied together.
+        Note that is generally more efficient to filter data when calling
+        echosounder.read()
 
         frequencies (list): Set this to a list containing the frequencies to
             return data from.
 
             Default: None (return all frequencies)
 
-        channels (list): Set this to a list containing the channel IDs to
+        channel_ids (list): Set this to a list containing the channel IDs to
             return data from.
 
             Default: None (return all channels)
-
-        return_indices (np.array uint32): Set this to a numpy array that contains
-            the index values to return in the processed data object. This can be
-            used for more advanced anipulations where start/end ping/time are
-            inadequate.
-
-            Default: None (return all pings)
-
-        calibration (EK80.ek80_calibration): Set to an instance of
-            EK80.ek80_calibration containing the calibration parameters
-            you want to use when transforming to Sv/sv. If no calibration
-            object is provided, the values will be extracted from the raw
-            data.
-
-            Default: None
-
-        linear (bool): Set to True if getting "sv" data
-
-            Default: False
-
-        tvg_correction (bool): Set to True to apply TVG range correction.
-            Typically you want to leave this at True.
-
-            Default: True
-
-        return_depth (bool): Set to True to return a processed_data object
-            with a depth axis. When False, the processed_data object has
-            a range axis.
-
-            Default: False
-
-        heave_correct (bool): Set to True to return a processed_data object
-            that has heave correction applied. Heave correction shifts samples
-            vertically to compensate for the sounder platform's vertical motion.
-            Heave corrected data is always returned as depth.
-
-            Default: False
 
         start_time (datetime64): Set to a numpy datetime64 oject specifying
             the start time of the data to convert. All data between the start
@@ -346,6 +400,460 @@ def get_Sv(data_object, calibration=None, frequencies=None,
 
             Default: None
 
+        return_indices (np.array uint32): Set this to a numpy array that contains
+            the index values to return in the processed data object. This can be
+            used for more advanced anipulations where start/end ping/time are
+            inadequate.
+
+            Default: None (return all pings)
+
+        calibration (EK80.ek80_calibration): Set to an instance of
+            EK80.ek80_calibration containing the calibration parameters
+            you want to use when transforming to Sv/sv. If no calibration
+            object is provided, the values will be extracted from the raw
+            data.
+
+            Default: None
+
+        tvg_correction (bool): Set to True to apply TVG range correction.
+            Typically you want to leave this at True.
+
+            Default: True
+
+        return_depth (bool): Set to True to return a processed_data object
+            with a depth axis. When False, the processed_data object has
+            a range axis.
+
+            Default: False
+
+        heave_correct (bool): Set to True to return a processed_data object
+            that has heave correction applied. Heave correction shifts samples
+            vertically to compensate for the sounder platform's vertical motion.
+            Heave corrected data is always returned as depth.
+
+            Default: False
+    '''
+
+    return _get_processed_data(data_object, 'Sv', linear=False, **kwargs)
+
+
+def get_sv(data_object, linear=True, **kwargs):
+    '''get_sv returns a dictionary, keyed by channel ID, containing processed
+        data object(s) containing sv data.
+
+        The frequencies, channel_ids, ping, and time range keywords can be set
+        to limit what data is returned. These keywords can be applied together.
+        Note that is generally more efficient to filter data when calling
+        echosounder.read()
+
+        frequencies (list): Set this to a list containing the frequencies to
+            return data from.
+
+            Default: None (return all frequencies)
+
+        channel_ids (list): Set this to a list containing the channel IDs to
+            return data from.
+
+            Default: None (return all channels)
+
+        start_time (datetime64): Set to a numpy datetime64 oject specifying
+            the start time of the data to convert. All data between the start
+            and end time will be returned. If set to None, the start time is
+            the first ping.
+
+            Default: None
+
+        end_time (datetime64): Set to a numpy datetime64 oject specifying
+            the end time of the data to convert. All data between the start
+            and end time will be returned. If set to None, the end time is
+            the last ping.
+
+            Default: None
+
+        start_ping (int): Set to an integer specifying the first ping number
+            to return. All pings between the start and end ping will be
+            returned. If set to None, the first ping is set as the start ping.
+
+            Default: None
+
+        end_ping (int): Set to an integer specifying the end ping number
+            to return. All pings between the start and end ping will be
+            returned. If set to None, the last ping is set as the end ping.
+
+            Default: None
+
+        return_indices (np.array uint32): Set this to a numpy array that contains
+            the index values to return in the processed data object. This can be
+            used for more advanced anipulations where start/end ping/time are
+            inadequate.
+
+            Default: None (return all pings)
+
+        calibration (EK80.ek80_calibration): Set to an instance of
+            EK80.ek80_calibration containing the calibration parameters
+            you want to use when transforming to Sv/sv. If no calibration
+            object is provided, the values will be extracted from the raw
+            data.
+
+            Default: None
+
+        tvg_correction (bool): Set to True to apply TVG range correction.
+            Typically you want to leave this at True.
+
+            Default: True
+
+        return_depth (bool): Set to True to return a processed_data object
+            with a depth axis. When False, the processed_data object has
+            a range axis.
+
+            Default: False
+
+        heave_correct (bool): Set to True to return a processed_data object
+            that has heave correction applied. Heave correction shifts samples
+            vertically to compensate for the sounder platform's vertical motion.
+            Heave corrected data is always returned as depth.
+
+            Default: False
+    '''
+
+    return _get_processed_data(data_object, 'Sv', linear=True, **kwargs)
+
+
+def get_Sp(data_object, linear=True, **kwargs):
+    '''get_Sp returns a dictionary, keyed by channel ID, containing processed
+        data object(s) containing Sp data.
+
+        The frequencies, channel_ids, ping, and time range keywords can be set
+        to limit what data is returned. These keywords can be applied together.
+        Note that is generally more efficient to filter data when calling
+        echosounder.read()
+
+        frequencies (list): Set this to a list containing the frequencies to
+            return data from.
+
+            Default: None (return all frequencies)
+
+        channel_ids (list): Set this to a list containing the channel IDs to
+            return data from.
+
+            Default: None (return all channels)
+
+        start_time (datetime64): Set to a numpy datetime64 oject specifying
+            the start time of the data to convert. All data between the start
+            and end time will be returned. If set to None, the start time is
+            the first ping.
+
+            Default: None
+
+        end_time (datetime64): Set to a numpy datetime64 oject specifying
+            the end time of the data to convert. All data between the start
+            and end time will be returned. If set to None, the end time is
+            the last ping.
+
+            Default: None
+
+        start_ping (int): Set to an integer specifying the first ping number
+            to return. All pings between the start and end ping will be
+            returned. If set to None, the first ping is set as the start ping.
+
+            Default: None
+
+        end_ping (int): Set to an integer specifying the end ping number
+            to return. All pings between the start and end ping will be
+            returned. If set to None, the last ping is set as the end ping.
+
+            Default: None
+
+        return_indices (np.array uint32): Set this to a numpy array that contains
+            the index values to return in the processed data object. This can be
+            used for more advanced anipulations where start/end ping/time are
+            inadequate.
+
+            Default: None (return all pings)
+
+        calibration (EK80.ek80_calibration): Set to an instance of
+            EK80.ek80_calibration containing the calibration parameters
+            you want to use when transforming to Sp/sp. If no calibration
+            object is provided, the values will be extracted from the raw
+            data.
+
+            Default: None
+
+        tvg_correction (bool): Set to True to apply TVG range correction.
+            Typically you want to leave this at True.
+
+            Default: True
+
+        return_depth (bool): Set to True to return a processed_data object
+            with a depth axis. When False, the processed_data object has
+            a range axis.
+
+            Default: False
+
+        heave_correct (bool): Set to True to return a processed_data object
+            that has heave correction applied. Heave correction shifts samples
+            vertically to compensate for the sounder platform's vertical motion.
+            Heave corrected data is always returned as depth.
+
+            Default: False
+    '''
+
+    return _get_processed_data(data_object, 'Sp', linear=False, **kwargs)
+
+
+def get_sp(data_object, linear=True, **kwargs):
+    '''get_sp returns a dictionary, keyed by channel ID, containing processed
+        data object(s) containing sp data.
+
+        The frequencies, channel_ids, ping, and time range keywords can be set
+        to limit what data is returned. These keywords can be applied together.
+        Note that is generally more efficient to filter data when calling
+        echosounder.read()
+
+        frequencies (list): Set this to a list containing the frequencies to
+            return data from.
+
+            Default: None (return all frequencies)
+
+        channel_ids (list): Set this to a list containing the channel IDs to
+            return data from.
+
+            Default: None (return all channels)
+
+        start_time (datetime64): Set to a numpy datetime64 oject specifying
+            the start time of the data to convert. All data between the start
+            and end time will be returned. If set to None, the start time is
+            the first ping.
+
+            Default: None
+
+        end_time (datetime64): Set to a numpy datetime64 oject specifying
+            the end time of the data to convert. All data between the start
+            and end time will be returned. If set to None, the end time is
+            the last ping.
+
+            Default: None
+
+        start_ping (int): Set to an integer specifying the first ping number
+            to return. All pings between the start and end ping will be
+            returned. If set to None, the first ping is set as the start ping.
+
+            Default: None
+
+        end_ping (int): Set to an integer specifying the end ping number
+            to return. All pings between the start and end ping will be
+            returned. If set to None, the last ping is set as the end ping.
+
+            Default: None
+
+        return_indices (np.array uint32): Set this to a numpy array that contains
+            the index values to return in the processed data object. This can be
+            used for more advanced anipulations where start/end ping/time are
+            inadequate.
+
+            Default: None (return all pings)
+
+        calibration (EK80.ek80_calibration): Set to an instance of
+            EK80.ek80_calibration containing the calibration parameters
+            you want to use when transforming to Sv/sv. If no calibration
+            object is provided, the values will be extracted from the raw
+            data.
+
+            Default: None
+
+        tvg_correction (bool): Set to True to apply TVG range correction.
+            Typically you want to leave this at True.
+
+            Default: True
+
+        return_depth (bool): Set to True to return a processed_data object
+            with a depth axis. When False, the processed_data object has
+            a range axis.
+
+            Default: False
+
+        heave_correct (bool): Set to True to return a processed_data object
+            that has heave correction applied. Heave correction shifts samples
+            vertically to compensate for the sounder platform's vertical motion.
+            Heave corrected data is always returned as depth.
+
+            Default: False
+    '''
+
+    return _get_processed_data(data_object, 'Sp', linear=True, **kwargs)
+
+
+def get_power(data_object, linear=False, **kwargs):
+    '''get_power returns a dictionary, keyed by channel ID, containing processed
+        data object(s) containing power data.
+
+        The frequencies, channel_ids, ping, and time range keywords can be set
+        to limit what data is returned. These keywords can be applied together.
+        Note that is generally more efficient to filter data when calling
+        echosounder.read()
+
+        frequencies (list): Set this to a list containing the frequencies to
+            return data from.
+
+            Default: None (return all frequencies)
+
+        channel_ids (list): Set this to a list containing the channel IDs to
+            return data from.
+
+            Default: None (return all channels)
+
+        start_time (datetime64): Set to a numpy datetime64 oject specifying
+            the start time of the data to convert. All data between the start
+            and end time will be returned. If set to None, the start time is
+            the first ping.
+
+            Default: None
+
+        end_time (datetime64): Set to a numpy datetime64 oject specifying
+            the end time of the data to convert. All data between the start
+            and end time will be returned. If set to None, the end time is
+            the last ping.
+
+            Default: None
+
+        start_ping (int): Set to an integer specifying the first ping number
+            to return. All pings between the start and end ping will be
+            returned. If set to None, the first ping is set as the start ping.
+
+            Default: None
+
+        end_ping (int): Set to an integer specifying the end ping number
+            to return. All pings between the start and end ping will be
+            returned. If set to None, the last ping is set as the end ping.
+
+            Default: None
+
+        return_indices (np.array uint32): Set this to a numpy array that contains
+            the index values to return in the processed data object. This can be
+            used for more advanced anipulations where start/end ping/time are
+            inadequate.
+
+            Default: None (return all pings)
+
+        calibration (EK80.ek80_calibration): Set to an instance of
+            EK80.ek80_calibration containing the calibration parameters
+            you want to use when transforming to Sv/sv. If no calibration
+            object is provided, the values will be extracted from the raw
+            data.
+
+            Default: None
+
+        linear (bool): Set to True to return data in linear units.
+
+            Default: False
+
+        tvg_correction (bool): Set to True to apply TVG range correction.
+            Typically you want to leave this at True.
+
+            Default: True
+
+        return_depth (bool): Set to True to return a processed_data object
+            with a depth axis. When False, the processed_data object has
+            a range axis.
+
+            Default: False
+
+        heave_correct (bool): Set to True to return a processed_data object
+            that has heave correction applied. Heave correction shifts samples
+            vertically to compensate for the sounder platform's vertical motion.
+            Heave corrected data is always returned as depth.
+
+            Default: False
+    '''
+
+    return _get_processed_data(data_object, 'power', linear=linear, **kwargs)
+
+
+def get_angles(data_object, **kwargs):
+    '''get_angles returns a dictionary, keyed by channel ID, containing processed
+        data object(s) containing physical angle data.
+
+        The frequencies, channel_ids, ping, and time range keywords can be set
+        to limit what data is returned. These keywords can be applied together.
+        Note that is generally more efficient to filter data when calling
+        echosounder.read()
+
+        frequencies (list): Set this to a list containing the frequencies to
+            return data from.
+
+            Default: None (return all frequencies)
+
+        channel_ids (list): Set this to a list containing the channel IDs to
+            return data from.
+
+            Default: None (return all channels)
+
+        start_time (datetime64): Set to a numpy datetime64 oject specifying
+            the start time of the data to convert. All data between the start
+            and end time will be returned. If set to None, the start time is
+            the first ping.
+
+            Default: None
+
+        end_time (datetime64): Set to a numpy datetime64 oject specifying
+            the end time of the data to convert. All data between the start
+            and end time will be returned. If set to None, the end time is
+            the last ping.
+
+            Default: None
+
+        start_ping (int): Set to an integer specifying the first ping number
+            to return. All pings between the start and end ping will be
+            returned. If set to None, the first ping is set as the start ping.
+
+            Default: None
+
+        end_ping (int): Set to an integer specifying the end ping number
+            to return. All pings between the start and end ping will be
+            returned. If set to None, the last ping is set as the end ping.
+
+            Default: None
+
+        return_indices (np.array uint32): Set this to a numpy array that contains
+            the index values to return in the processed data object. This can be
+            used for more advanced anipulations where start/end ping/time are
+            inadequate.
+
+            Default: None (return all pings)
+
+        calibration (EK80.ek80_calibration): Set to an instance of
+            EK80.ek80_calibration containing the calibration parameters
+            you want to use when transforming to Sv/sv. If no calibration
+            object is provided, the values will be extracted from the raw
+            data.
+
+            Default: None
+
+        return_depth (bool): Set to True to return a processed_data object
+            with a depth axis. When False, the processed_data object has
+            a range axis.
+
+            Default: False
+
+        heave_correct (bool): Set to True to return a processed_data object
+            that has heave correction applied. Heave correction shifts samples
+            vertically to compensate for the sounder platform's vertical motion.
+            Heave corrected data is always returned as depth.
+
+            Default: False
+    '''
+
+    return _get_processed_data(data_object, 'angles', **kwargs)
+
+
+def _get_processed_data(data_object, data_type, calibration=None,
+        frequencies=None, channel_ids=None, heave_correct=False, **kwargs):
+    '''_get_processed_data is an internal function that returns a dictionary,
+        keyed by channel ID, containing processed_data objects containing the
+        specified data type. Valid data_types are 'Sv', 'power', 'Sp', 'angles'
+
+        This function is not intended to be called directly. Instead you should
+        call get_Sv(), get_Sp(), get_power(), etc.
     '''
 
     data = {}
@@ -357,7 +865,7 @@ def get_Sv(data_object, calibration=None, frequencies=None,
         raw_obj = data_object.raw_data[chan][0]
 
         #  check if we're returning this channel
-        return_chan = _filter_channel(chan, raw_obj, channels, frequencies)
+        return_chan = _filter_channel(chan, raw_obj, channel_ids, frequencies)
 
         # if we are, get all of the data
         if return_chan:
@@ -374,7 +882,14 @@ def get_Sv(data_object, calibration=None, frequencies=None,
                 cal_obj = raw_obj.get_calibration(**kwargs)
 
             #  then get the data
-            sv_data = raw_obj.get_Sv(calibration=cal_obj, **kwargs)
+            if data_type == 'Sv':
+                p_data = raw_obj.get_Sv(calibration=cal_obj, **kwargs)
+            elif data_type == 'Sp':
+                p_data = raw_obj.get_Sp(calibration=cal_obj, **kwargs)
+            elif data_type == 'power':
+                p_data = raw_obj.get_power(calibration=cal_obj, **kwargs)
+            elif data_type == 'angles':
+                p_data = raw_obj.get_physical_angles(calibration=cal_obj, **kwargs)
 
             #  add the navigation and motion data - this takes the asynchronous NMEA
             #  and motion data and interpolates it onto the ping time axis and stores
@@ -382,24 +897,24 @@ def get_Sv(data_object, calibration=None, frequencies=None,
 
             #  first add the NMEA data - This will add the position, speed, attitude,
             #  and distance meta-types (see instruments.util.nmea_data for more info)
-            sv_data.set_navigation(data_object.nmea_data)
+            p_data.set_navigation(data_object.nmea_data)
 
             #  then add the motion data - we'll check if we have lat data from the NMEA
             #  data and if not, try to get it from the motion data. Some EK80 configurations
             #  may only store lat/lon in the motion data and not as NMEA data.
-            if not hasattr(sv_data, 'latitude'):
+            if not hasattr(p_data, 'latitude'):
                 #  we didn't get lat/lon from the NMEA data so try to get it from motion data
-                sv_data.set_motion(data_object.motion_data, motion_attributes=['pitch',
+                p_data.set_motion(data_object.motion_data, motion_attributes=['pitch',
                         'roll', 'heave', 'heading', 'latitude', 'longitude'])
             else:
                 #  we have lat (and presumably lon) data so we just get the "regular" motion
                 #  data (pitch, roll, heave, heading)
-                sv_data.set_motion(data_object.motion_data)
+                p_data.set_motion(data_object.motion_data)
 
             #  apply heave correction if needed - this has no effect if heave
             #  data is not available.
             if heave_correct:
-                sv_data.heave_correct()
+                p_data.heave_correct()
 
             #  get the bottom detection data. This method will automatically
             #  correct depths as needed if the calibration sound speed is different
@@ -410,7 +925,7 @@ def get_Sv(data_object, calibration=None, frequencies=None,
                 #  Bottom data is always recorded as depth with heave correction applied,
                 #  so we need to back out transducer Z offset and/or heave (if applicable)
                 #  when returning sample data with range as the vertical axis
-                v_axis = sv_data.get_v_axis()[1]
+                v_axis = p_data.get_v_axis()[1]
                 if v_axis == 'range':
                     #  the transducer_draft attribute of the bottom line contains both
                     #  the z offset and heave. We simply subtract these values from the
@@ -422,21 +937,15 @@ def get_Sv(data_object, calibration=None, frequencies=None,
                     #  not heave corrected the sample data
                     if not heave_correct:
                         #  heave correction is not set, subtract heave from the bottom line
-                        bottom_line = bottom_line - sv_data.heave
+                        bottom_line = bottom_line - p_data.heave
 
                 #  insert the bottom detection line into the processed data object
-                sv_data.bottom_line = bottom_line
+                p_data.bottom_line = bottom_line
 
             #  and add the data to our return dict
-            data[chan] = sv_data
+            data[chan] = p_data
 
     return data
-
-
-def get_sv(data_object, linear=True, **kwargs):
-
-    return get_Sv(data_object, linear=True, **kwargs)
-
 
 
 def _filter_channel(chan, raw_obj, channels, frequencies):
@@ -478,3 +987,173 @@ def _check_filetype(filename):
 
 class UnknownFormatError(Exception):
     pass
+
+
+
+
+#def get_Sv(data_object, calibration=None, frequencies=None,
+#        channel_ids=None, heave_correct=False, **kwargs):
+#    '''get_Sv returns a dictionary, keyed by channel ID, containing
+#        aprocessed_data objects containing Sv or sv data.
+#
+#        The frequencies and channels keywords can be set to limit what
+#        data is returned. These keywords can be applied together.
+#
+#        frequencies (list): Set this to a list containing the frequencies to
+#            return data from.
+#
+#            Default: None (return all frequencies)
+#
+#        channel_ids (list): Set this to a list containing the channel IDs to
+#            return data from.
+#
+#            Default: None (return all channels)
+#
+#        return_indices (np.array uint32): Set this to a numpy array that contains
+#            the index values to return in the processed data object. This can be
+#            used for more advanced anipulations where start/end ping/time are
+#            inadequate.
+#
+#            Default: None (return all pings)
+#
+#        calibration (EK80.ek80_calibration): Set to an instance of
+#            EK80.ek80_calibration containing the calibration parameters
+#            you want to use when transforming to Sv/sv. If no calibration
+#            object is provided, the values will be extracted from the raw
+#            data.
+#
+#            Default: None
+#
+#        linear (bool): Set to True if getting "sv" data
+#
+#            Default: False
+#
+#        tvg_correction (bool): Set to True to apply TVG range correction.
+#            Typically you want to leave this at True.
+#
+#            Default: True
+#
+#        return_depth (bool): Set to True to return a processed_data object
+#            with a depth axis. When False, the processed_data object has
+#            a range axis.
+#
+#            Default: False
+#
+#        heave_correct (bool): Set to True to return a processed_data object
+#            that has heave correction applied. Heave correction shifts samples
+#            vertically to compensate for the sounder platform's vertical motion.
+#            Heave corrected data is always returned as depth.
+#
+#            Default: False
+#
+#        start_time (datetime64): Set to a numpy datetime64 oject specifying
+#            the start time of the data to convert. All data between the start
+#            and end time will be returned. If set to None, the start time is
+#            the first ping.
+#
+#            Default: None
+#
+#        end_time (datetime64): Set to a numpy datetime64 oject specifying
+#            the end time of the data to convert. All data between the start
+#            and end time will be returned. If set to None, the end time is
+#            the last ping.
+#
+#            Default: None
+#
+#        start_ping (int): Set to an integer specifying the first ping number
+#            to return. All pings between the start and end ping will be
+#            returned. If set to None, the first ping is set as the start ping.
+#
+#            Default: None
+#
+#        end_ping (int): Set to an integer specifying the end ping number
+#            to return. All pings between the start and end ping will be
+#            returned. If set to None, the last ping is set as the end ping.
+#
+#            Default: None
+#
+#    '''
+#
+#    data = {}
+#
+#    #  iterate thru all of the channels
+#    for chan in data_object.raw_data:
+#
+#        #  get a reference to this channel's raw data
+#        raw_obj = data_object.raw_data[chan][0]
+#
+#        #  check if we're returning this channel
+#        return_chan = _filter_channel(chan, raw_obj, channel_ids, frequencies)
+#
+#        # if we are, get all of the data
+#        if return_chan:
+#            #  first, get a calibration object for this channel
+#            if calibration:
+#                if chan in calibration:
+#                    #  one is provided
+#                    cal_obj = calibration[chan]
+#                else:
+#                    #  cal dict provided but this channel not in it - get from raw
+#                    cal_obj = raw_obj.get_calibration(**kwargs)
+#            else:
+#                #  no cal provided - get one using the raw file parameters
+#                cal_obj = raw_obj.get_calibration(**kwargs)
+#
+#            #  then get the data
+#            sv_data = raw_obj.get_Sv(calibration=cal_obj, **kwargs)
+#
+#            #  add the navigation and motion data - this takes the asynchronous NMEA
+#            #  and motion data and interpolates it onto the ping time axis and stores
+#            #  the data in the processed data object.
+#
+#            #  first add the NMEA data - This will add the position, speed, attitude,
+#            #  and distance meta-types (see instruments.util.nmea_data for more info)
+#            sv_data.set_navigation(data_object.nmea_data)
+#
+#            #  then add the motion data - we'll check if we have lat data from the NMEA
+#            #  data and if not, try to get it from the motion data. Some EK80 configurations
+#            #  may only store lat/lon in the motion data and not as NMEA data.
+#            if not hasattr(sv_data, 'latitude'):
+#                #  we didn't get lat/lon from the NMEA data so try to get it from motion data
+#                sv_data.set_motion(data_object.motion_data, motion_attributes=['pitch',
+#                        'roll', 'heave', 'heading', 'latitude', 'longitude'])
+#            else:
+#                #  we have lat (and presumably lon) data so we just get the "regular" motion
+#                #  data (pitch, roll, heave, heading)
+#                sv_data.set_motion(data_object.motion_data)
+#
+#            #  apply heave correction if needed - this has no effect if heave
+#            #  data is not available.
+#            if heave_correct:
+#                sv_data.heave_correct()
+#
+#            #  get the bottom detection data. This method will automatically
+#            #  correct depths as needed if the calibration sound speed is different
+#            #  from the sound speed at the time of collection.
+#            bottom_line = raw_obj.get_bottom(calibration=cal_obj, **kwargs)
+#
+#            if bottom_line is not None:
+#                #  Bottom data is always recorded as depth with heave correction applied,
+#                #  so we need to back out transducer Z offset and/or heave (if applicable)
+#                #  when returning sample data with range as the vertical axis
+#                v_axis = sv_data.get_v_axis()[1]
+#                if v_axis == 'range':
+#                    #  the transducer_draft attribute of the bottom line contains both
+#                    #  the z offset and heave. We simply subtract these values from the
+#                    #  line data to get the line in range.
+#                    bottom_line = bottom_line - bottom_line.transducer_draft
+#                else:
+#                    #  we're returning data as depth. We don't need to back out transducer
+#                    #  z offset, but we have to back out heave correction if the user has
+#                    #  not heave corrected the sample data
+#                    if not heave_correct:
+#                        #  heave correction is not set, subtract heave from the bottom line
+#                        bottom_line = bottom_line - sv_data.heave
+#
+#                #  insert the bottom detection line into the processed data object
+#                sv_data.bottom_line = bottom_line
+#
+#            #  and add the data to our return dict
+#            data[chan] = sv_data
+#
+#    return data
