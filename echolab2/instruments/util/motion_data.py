@@ -13,6 +13,12 @@
 #  (1) FOR THE USE OF THE SOFTWARE AND DOCUMENTATION; OR (2) TO PROVIDE TECHNICAL
 #  SUPPORT TO USERS.
 """
+.. module:: echolab2.instruments.util.motion_data
+
+    :synopsis:  The motion_data class provides methods to store and
+                retrieve platform motion data contained in Simrad MRU0
+                and MRU1 datagrams.
+
 | Developed by:  Rick Towler   <rick.towler@noaa.gov>
 | National Oceanic and Atmospheric Administration (NOAA)
 | Alaska Fisheries Science Center (AFSC)

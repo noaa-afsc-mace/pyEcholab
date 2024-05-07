@@ -35,7 +35,6 @@ $Id$
 
 import os
 import re
-import datetime
 import numpy as np
 from scipy.interpolate import interp1d
 from .util.simrad_calibration import calibration
@@ -61,9 +60,9 @@ class EK80(object):
     channel, or create processed_data objects containing.
 
     Attributes:
-        start_time: Start_time is a datetime object that defines the start
+        start_time: Start_time is a datetime64 object that defines the start
             time of the data within the EK80 class
-        end_time: End_time is a datetime object that defines the end time of
+        end_time: End_time is a datetime64 object that defines the end time of
             the data within the EK80 class
         start_ping: Start_ping is an integer that defines the first ping of the
             data within the EK80 class.
@@ -789,9 +788,11 @@ class EK80(object):
         #  create the return dict that provides feedback on progress
         result = {'bytes_read':0, 'timestamp':None, 'type':None, 'finished':False}
 
-        #  attempt to read the next datagram
+        #  peek at the next datagram to get some basic info. We'll determine if we
+        #  should read or skip this datagram below
         try:
-            new_datagram = fid.read(1)
+            #  get the next datagram's header
+            dgram_header = fid.get_header()
         except SimradEOF:
             #  we're at the end of the file
             result['finished'] = True
@@ -799,27 +800,85 @@ class EK80(object):
 
         # Convert the timestamp to a datetime64 object.
         # Check for NULL datagram date/time which is returned as datetime.datetime(1601, 1, 1, 0, 0)
-        if new_datagram['timestamp'].year < 1900:
+        if dgram_header['timestamp'].year < 1900:
             # This datagram has NULL date/time values
-            new_datagram['timestamp'] = np.datetime64("NaT")
+            dgram_header['timestamp'] = np.datetime64("NaT")
         else:
             # We have a plausible date/time value
-            new_datagram['timestamp'] = \
-                    np.datetime64(new_datagram['timestamp'], '[ms]')
+            dgram_header['timestamp'] = \
+                    np.datetime64(dgram_header['timestamp'], '[ms]')
 
         #  update the return dict properties
-        result['timestamp'] = new_datagram['timestamp']
-        result['bytes_read'] = new_datagram['bytes_read']
-        result['type'] = new_datagram['type']
+        result['timestamp'] = dgram_header['timestamp']
+        result['bytes_read'] = dgram_header['bytes_read']
+        result['type'] = dgram_header['type']
 
-        # If this is a NMEA datagram and we're not storing them, bail
-        if not nmea and new_datagram['type'].startswith('NME'):
-            # This is a NMEA datagram and we're skipping them
+        #  check datagrams that can be filtered *if* the should be filtered
+        if dgram_header['type'][:3] in ['RAW', 'BOT', 'NME']:
+
+            # If this is a NMEA datagram and we're not storing them, bail
+            if not nmea and dgram_header['type'].startswith('NME'):
+                # This is a NMEA datagram and we're skipping them
+                # so we skip the rest of the datagram and return
+                fid.skip(header=dgram_header)
+                return result
+
+            #  update the ping counter
+            if dgram_header['type'].startswith('RAW'):
+                if self._this_ping_time != dgram_header['timestamp']:
+                    self.n_pings += 1
+                    self._this_ping_time = dgram_header['timestamp']
+
+            # Check if data should be stored based on time bounds.
+            if self.read_start_time is not None:
+                if dgram_header['timestamp'] < self.read_start_time:
+                    #  we have a start time and this data comes before it
+                    #  so we skip the rest of the datagram and return
+                    fid.skip(header=dgram_header)
+                    return result
+            if self.read_end_time is not None:
+                if dgram_header['timestamp'] > self.read_end_time:
+                    #  we have a end time and this data comes after it
+                    #  so we are actually done reading - set the finished
+                    #  field in our return dict and return
+                    result['finished'] = True
+                    return result
+
+            # Check if we should store this data based on ping bounds.
+            if self.read_start_ping is not None:
+                if self.n_pings < self.read_start_ping:
+                    #  we have a start ping and this data comes before it
+                    #  so we skip the rest of the datagram and return
+                    fid.skip(header=dgram_header)
+                    return result
+            if self.read_end_ping is not None:
+                if self.n_pings > self.read_end_ping:
+                    #  we have a end ping and this data comes after it
+                    #  so we are actually done reading - set the finished
+                    #  field in our return dict and return
+                    result['finished'] = True
+                    return result
+
+            # Update the end_time property.
+            if self.end_time is not None:
+                # We can't assume data will be read in time order.
+                if self.end_time < dgram_header['timestamp']:
+                    self.end_time = dgram_header['timestamp']
+            else:
+                self.end_time = dgram_header['timestamp']
+
+        #  if we're here, we're reading the datagram
+        try:
+            #  pass the datagram header and read the rest of the datagram
+            new_datagram = fid.read(1, header=dgram_header)
+        except SimradEOF:
+            #  we're at the end of the file
+            result['finished'] = True
             return result
 
-        # We have to process all XML parameter and environment datagrams
-        # regardless of time/ping bounds. This ensures all pings have fresh
-        # references to these data.
+        # Process and store the datagrams by type.
+
+        # Process all XML parameter datagrams
         if new_datagram['type'].startswith('XML'):
             if new_datagram['subtype'] == 'parameter':
                 #  update the most recent parameter attribute for this channel
@@ -849,50 +908,6 @@ class EK80(object):
                 self._ping_sequence = new_datagram[new_datagram['subtype']]
 
             return result
-
-        # Check if data should be stored based on time bounds.
-        if self.read_start_time is not None:
-            if new_datagram['timestamp'] < self.read_start_time:
-                #  we have a start time but this data comes before it
-                #  so we return without doing anything else
-                return result
-        if self.read_end_time is not None:
-            if new_datagram['timestamp'] > self.read_end_time:
-                #  we have a end time and this data comes after it
-                #  so we are actually done reading - set the finished
-                #  field in our return dict and return
-                result['finished'] = True
-                return result
-
-        #  update the ping counter
-        if new_datagram['type'].startswith('RAW'):
-            if self._this_ping_time != new_datagram['timestamp']:
-                self.n_pings += 1
-                self._this_ping_time = new_datagram['timestamp']
-
-        # Check if we should store this data based on ping bounds.
-        if self.read_start_ping is not None:
-            if self.n_pings < self.read_start_ping:
-                #  we have a start ping but this data comes before it
-                #  so we return without doing anything else
-                return result
-        if self.read_end_ping is not None:
-            if self.n_pings > self.read_end_ping:
-                #  we have a end ping and this data comes after it
-                #  so we are actually done reading - set the finished
-                #  field in our return dict and return
-                result['finished'] = True
-                return result
-
-        # Update the end_time property.
-        if self.end_time is not None:
-            # We can't assume data will be read in time order.
-            if self.end_time < new_datagram['timestamp']:
-                self.end_time = new_datagram['timestamp']
-        else:
-            self.end_time = new_datagram['timestamp']
-
-        # Process and store the datagrams by type.
 
         #  FIL datagrams store parameters used to filter the received signal
         #  EK80 class stores the filters for the currently being read file.
@@ -2330,7 +2345,7 @@ class raw_data(ping_data):
 
             ping_number (int): Set to an integer indicating the ping number where the
                 data should be inserted.
-            ping_time (datetime):Set to an integer indicating the ping number where the
+            ping_time (datetime64):Set to an integer indicating the ping number where the
                 data should be inserted.
             index_array (array):Set to a numpy array that is the same length
                 as the raw_data object you're inserting where each element is

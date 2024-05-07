@@ -18,16 +18,18 @@ processed_data object.
 
 Attributes
 
-bottom - an pyEcholab.line object containing the bottom detections
+bottom_line - an pyEcholab.line object containing the bottom detections
 channel_id - a string containing the channel name
-data - the attribute that contains the sample data
+data - the attribute that contains the sample data - processed_data objects also
+       have a reference to the data named for the data type, so Sv data will also
+       have an attribute "Sv" that points to this data.
 data_type - a string specifying the data type: Sv, sv, Sp, sp, power, etc
-depth - contains the vertical axis values when the vertical axis is specified as depth
+depth - contains the vertical axis values in meters when the vertical axis is specified as depth
  OR
-range - contains the vertical axis when the vertical axis is specified as range
+range - contains the vertical axis values in meters when the vertical axis is specified as range
 frequency - the frequency of the sample data
-heading - contains the heading data by ping
-heave - contains the heave data by ping
+heading - contains the platform heading data by ping
+heave - contains the platform heave data by ping
 is_heave_corrected - will be True if heave correction has been applied to the data
 is_log - Will be True if data are in log form
 latitude - contains the latitude data by ping
@@ -35,10 +37,10 @@ longitude - contains the longitude data by ping
 n_pings - contains the number of pings in the data
 n_samples - contains the number of samples in the data
 ping_time - contains the ping times as a numpy datetime64 object
-pitch - contains the longitude data by ping
+pitch - contains the platform pitch data by ping
 sample_interval
 sample_offset - the number of samples the data have been offset vertically
-sample_thickness
+sample_thickness - the thickness, in meters, of each sample
 sound_speed
 spd_over_grnd_kts
 transducer_offset
@@ -67,17 +69,32 @@ from echolab2.plotting.matplotlib import echogram
 #  specify the raw file to read. You can provide a string specifying the
 #  full path to the data file or a list of strings if you want to read
 #  multiple files at the same time.
-rawfile = 'C:/EK Test Data/EK60/DY1807/DY1807_EK60-D20180607-T223129.raw'
+
+# example of a MACE sequence file
+#rawfile='//nmfs.local/akc-race/MACE_Acoustic2/DY2403/ek80/DY2403-D20240306-T164955.raw'
+
+# EK60 example with bot
+rawfile='C:/EK Test Data/EK60/DY1807/DY1807_EK60-D20180607-T223821.raw'
+
+#  read a "normal" Dyson EK80 file
+#rawfile='//nmfs.local/akc-race/MACE_Acoustic2/DY2308/EK80/DY2308_EK80-D20230702-T064241.raw'
+
+#  read a group of Drix files - No NMEA, no bottom, Nav data in MRU1
+#rawfile=['//nmfs.local/akc-race/MACE_Acoustic2/DY2308/DY2308_DriX_backup/Data_from_DRiX/Drix_survey_PC/EK80/DriX12_DY2308-D20230707-T214546.raw',
+#         '//nmfs.local/akc-race/MACE_Acoustic2/DY2308/DY2308_DriX_backup/Data_from_DRiX/Drix_survey_PC/EK80/DriX12_DY2308-D20230707-T215551.raw',
+#         '//nmfs.local/akc-race/MACE_Acoustic2/DY2308/DY2308_DriX_backup/Data_from_DRiX/Drix_survey_PC/EK80/DriX12_DY2308-D20230707-T220556.raw']
+
 
 #  use the echosounder module to read the data. The Echosounder module provides
 #  a simple interface for reading and extracting data from Simrad .raw files.
 #  It will read the specified raw file(s) and attempt to read their associated
 #  bottom detection files. echosounder.read() will return either an EK60 or EK80
 #  object depending on the format of the data that was read.
-print("Reading .raw data...")
+print("Reading .raw data: " + rawfile)
 ek_data = echosounder.read(rawfile)
 
 #  print some information about the data we just read
+print("Raw data object info:")
 print(ek_data)
 
 #  get calibration objects for the data.  echosounder.get_calibration_from_raw()
@@ -92,19 +109,26 @@ cal_objects = echosounder.get_calibration_from_raw(ek_data)
 #  data on a depth grid. get_Sv() will return a dictionary, keyed by channel ID,
 #  containing the raw sample data converted to Sv using the parameters specified in
 #  the calibration object. The data are contained in a echolab processed_data object
-#  that has many useful
+#  that has many other useful attributes
+Sv_data = echosounder.get_Sv(ek_data, calibration=cal_objects, return_depth=False)
 
-Sv_data = echosounder.get_Sv(ek_data, calibration=cal_objects, return_depth=True)
-
-#  iterate thru the channels and plot
+#  iterate thru the channels contains in Sv_data and plot
 for channel_id in Sv_data:
+
+    #  print some info about this processed data object
+    print("Processed data object info:")
+    print(Sv_data[channel_id])
+    print()
+
+    #  create a figure to plot our echogram in
     fig = plt.figure()
 
     #  create an echogram
     eg = echogram.Echogram(fig, Sv_data[channel_id], threshold=[-70,-34])
 
-    #  add the bottom line
-    eg.plot_line(Sv_data[channel_id].bottom, color=[1.0, 0.8, 0], linewidth=1.5)
+    #  add the bottom line if we have one
+    if hasattr(Sv_data[channel_id], 'bottom_line'):
+        eg.plot_line(Sv_data[channel_id].bottom_line, color=[1.0, 0.8, 0], linewidth=1.5)
 
     #  and a color bar
     eg.add_colorbar(fig)
@@ -115,5 +139,7 @@ for channel_id in Sv_data:
 
 # Show our figures
 plt.show()
+
+print()
 
 

@@ -12,7 +12,13 @@
 #  OF THE SOFTWARE AND DOCUMENTATION FOR ANY PURPOSE. THEY ASSUME NO RESPONSIBILITY
 #  (1) FOR THE USE OF THE SOFTWARE AND DOCUMENTATION; OR (2) TO PROVIDE TECHNICAL
 #  SUPPORT TO USERS.
+
 """
+.. module:: echolab2.instruments.util.nmea_data
+
+    :synopsis:  The nmea_data class provides methods to store, parse, and
+                retrieve ASCII based NMEA-0183 like messages.
+
 | Developed by:  Rick Towler   <rick.towler@noaa.gov>
 | National Oceanic and Atmospheric Administration (NOAA)
 | Alaska Fisheries Science Center (AFSC)
@@ -547,9 +553,15 @@ class nmea_data(object):
 
         #  Ensure that we have times to work with.
         if start_time is None:
-            start_time = np.min(self.nmea_times)
+            if self.n_raw > 0:
+                start_time = np.min(self.nmea_times)
+            else:
+                start_time = np.datetime64("NaT")
         if end_time is None:
-            end_time = np.max(self.nmea_times)
+            if self.n_raw > 0:
+                end_time = np.max(self.nmea_times)
+            else:
+                end_time = np.datetime64("NaT")
 
         # Sort time index if returning time ordered indexes.
         if time_order:
