@@ -443,6 +443,8 @@ class calibration(object):
             param, value = parse_xml_param(tag,root.find('./Calibration/'+tag).text)
             setattr(self, param, value)
 
+        setattr(self, 'channel_name', root.find('./Calibration/Common/Transceiver/ChannelName').text)
+
             
     def get_attribute_from_raw(self, raw_data, param_name, return_indices=None):
         """get_attribute_from_raw gets an individual attribute using the data
