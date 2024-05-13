@@ -354,9 +354,10 @@ def get_calibration_from_ecs(data_object, ecs_file, channel_map=None, **kwargs):
         #  finally read the ecs file and update the params in our calibration
         ecs_file = os.path.normpath(ecs_file)
         calibrations[chan].read_ecs_file(ecs_file, ev_cal_label)
+    return calibrations
 
 
-def get_calibration_from_xml(data_object,xml_files,calibration = None):
+def get_calibration_from_xml(data_object,xml_files,calibrations = None):
  
     '''get_calibration_from_xml returns a dictionary, keyed by channel ID,
     containing a calibration object populated with data extracted from the
@@ -385,8 +386,8 @@ def get_calibration_from_xml(data_object,xml_files,calibration = None):
         xml_files = [xml_files]
     
     # Initiate the calibrations dictionary if not provided an already existing dictionary
-    if calibration is None:
-        calibration = {}
+    if calibrations is None:
+        calibrations = {}
 
     # Loop through the xml files and fill in the dictionary with the matching data_object channel_id as the key
     for file in xml_files:
@@ -401,22 +402,22 @@ def get_calibration_from_xml(data_object,xml_files,calibration = None):
 
         # If the channel pulse form matches the pulse form of the data, add the calibration to the dictionary
         if cal.pulse_form == data_object.get_channel_data()[chan][0].pulse_form[0]:
-            if chan not in calibration.keys():
-                calibration[chan] = []
-            calibration[chan].append(cal)
+            if chan not in calibrations.keys():
+                calibrations[chan] = []
+            calibrations[chan].append(cal)
 
     # Create averaged calibrations for channels where multiple xml files exist
-    for chan in calibration.keys():
+    for chan in calibrations.keys():
         
         # Check in case we've provided a calibration dictionary that already has objects in it
-        if isinstance(calibration[chan],list):
+        if isinstance(calibrations[chan],list):
 
             # If there are multiple cals for the same channel, the variables from the calibration results tree are averaged
-            if (len(calibration[chan]) > 1):
+            if (len(calibrations[chan]) > 1):
                 print('Multiple calibrations for channel: ',chan)
 
                 # Create a new calibration object to store the merged calibration with the rest of the properties from the first calibration
-                merged_cal = calibration[chan][0]
+                merged_cal = calibrations[chan][0]
 
                 # Loop through the calibration attributes that need to be averaged
                 for attr in ['gain', 'sa_correction', 'beam_width_alongship', 'beam_width_athwartship', 'angle_offset_alongship', 'angle_offset_athwartship']:
@@ -424,7 +425,7 @@ def get_calibration_from_xml(data_object,xml_files,calibration = None):
                     merged_frequency,merged_val,full_frequencies,full_values = np.array([]),np.array([]), np.array([]),np.array([])
 
                     # For each calibration in the list for the channel...
-                    for cal in calibration[chan]: 
+                    for cal in calibrations[chan]: 
                         
                         # get the attribute as a function of frequency
                         current_frequency, current_gain = cal.frequency, getattr(cal,attr)
@@ -458,13 +459,13 @@ def get_calibration_from_xml(data_object,xml_files,calibration = None):
                     merged_cal.__setattr__(attr,merged_val)
 
                 # Assign the merged calibration to the channel in the calibrations dictionary
-                calibration[chan] = merged_cal
+                calibrations[chan] = merged_cal
             
             # If there is only one calibration for the channel, just pull it out of the list
             else:
-                calibration[chan] = calibration[chan][0]
+                calibrations[chan] = calibrations[chan][0]
 
-    return calibration
+    return calibrations
 
 
 def get_Sv(data_object, linear=True, **kwargs):
