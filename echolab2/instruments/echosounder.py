@@ -397,7 +397,11 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None):
         cal.read_xml_file(file)
 
         # Get the channel name from the calibration file and find the corresponding channel_id in the data_object
-        xml_chan = cal.channel_name.split(' ')[0]+'_'+cal.channel_name.split('-')[-1]
+        try: # If the channel ends in a number, include it in the channel ID
+            int(cal.channel_name.split('-')[-1])
+            xml_chan = cal.channel_name.split(' ')[0]+'_'+cal.channel_name.split('-')[-1]
+        except:
+            xml_chan = cal.channel_name.split(' ')[0]
         chan  = [s for s in data_object.channel_ids if xml_chan in s][0]
 
         # If the channel pulse form matches the pulse form of the data, add the calibration to the dictionary
