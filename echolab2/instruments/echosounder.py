@@ -62,6 +62,7 @@ import os
 from . import EK80
 from . import EK60
 from .util import simrad_utils
+import numpy as np
 
 
 SIMRAD_EK60 = 0
@@ -353,6 +354,122 @@ def get_calibration_from_ecs(data_object, ecs_file, channel_map=None, **kwargs):
         #  finally read the ecs file and update the params in our calibration
         ecs_file = os.path.normpath(ecs_file)
         calibrations[chan].read_ecs_file(ecs_file, ev_cal_label)
+    return calibrations
+
+
+def get_calibration_from_xml(data_object,xml_files,calibrations = None):
+ 
+    '''get_calibration_from_xml returns a dictionary, keyed by channel ID,
+    containing a calibration object populated with data extracted from the
+    EK80 xml files provided. 
+    
+    The function will use the calibration parameters in the raw data to build 
+    the calibration objects, and overwrite the appropriate parameters with the
+    values from the xml files.
+
+    Where multiple xml files for the same channel are provided, the function will
+    average the calibration parameters for each frequency.
+
+    data_object (EK60 or EK80 object): Set this to an instance of the EK60 or
+        EK80 object that you obtained after calling echosounder.read().
+
+    xml_files (str): Set this to the full path to the .xml file you want to read
+        or provide a list of xml files.
+
+    calibration (dict): Provide an already existing calibration dictionary keyed
+        by channel ID to append new channels.
+    
+    '''
+ 
+    # if we're given a string, wrap it in a list
+    if not isinstance(xml_files, list):
+        xml_files = [xml_files]
+    
+    # Initiate the calibrations dictionary if not provided an already existing dictionary
+    if calibrations is None:
+        calibrations = {}
+
+    # Loop through the xml files and fill in the dictionary with the matching data_object channel_id as the key
+    for file in xml_files:
+
+        # Read the calibration file
+        cal = EK80.ek80_calibration()
+        cal.read_xml_file(file)
+
+        # Get the channel name from the calibration file and find the corresponding channel_id in the data_object
+        try: # If the channel ends in a number, include it in the channel ID
+            int(cal.channel_name.split('-')[-1])
+            xml_chan = cal.channel_name.split(' ')[0]+'_'+cal.channel_name.split('-')[-1]
+        except:
+            xml_chan = cal.channel_name.split(' ')[0]
+        chan  = [s for s in data_object.channel_ids if xml_chan in s][0]
+
+        # If the channel pulse form matches the pulse form of the data, add the calibration to the dictionary
+        if cal.pulse_form == data_object.get_channel_data()[chan][0].pulse_form[0]:
+            if chan not in calibrations.keys():
+                calibrations[chan] = []
+            calibrations[chan].append(cal)
+
+    # Create averaged calibrations for channels where multiple xml files exist
+    for chan in calibrations.keys():
+        
+        # Check in case we've provided a calibration dictionary that already has objects in it
+        if isinstance(calibrations[chan],list):
+
+            # If there are multiple cals for the same channel, the variables from the calibration results tree are averaged
+            if (len(calibrations[chan]) > 1):
+                print('Multiple calibrations for channel: ',chan)
+
+                # Create a new calibration object to store the merged calibration with the rest of the properties from the first calibration
+                merged_cal = calibrations[chan][0]
+
+                # Loop through the calibration attributes that need to be averaged
+                for attr in ['gain', 'sa_correction', 'beam_width_alongship', 'beam_width_athwartship', 'angle_offset_alongship', 'angle_offset_athwartship']:
+                            
+                    merged_frequency,merged_val,full_frequencies,full_values = np.array([]),np.array([]), np.array([]),np.array([])
+
+                    # For each calibration in the list for the channel...
+                    for cal in calibrations[chan]: 
+                        
+                        # get the attribute as a function of frequency
+                        current_frequency, current_gain = cal.frequency, getattr(cal,attr)
+                        
+                        # If the frequency/attribute is not an array (CW data), make it an array
+                        if ~isinstance(current_frequency,np.ndarray):
+                            current_frequency = np.array([current_frequency])
+                        if ~isinstance(current_gain,np.ndarray):
+                            current_gain = np.array([current_gain])
+                        
+                        # If the merged frequency array is empty, just add the current frequency array to it
+                        if merged_frequency.size==0:
+                            merged_frequency = current_frequency
+                        else: # otherwise append the current frequency array to the merged frequency array and select only the unique values
+                            merged_frequency = np.unique(np.concatenate((merged_frequency,current_frequency),0))
+                        
+                        # Append the current frequency and attribute values to the all frequency and attribute arrays
+                        full_frequencies = np.append(full_frequencies,current_frequency)
+                        full_values = np.append(full_values,current_gain)
+
+                    # For each frequency in the new merged frequency array, calculate the mean of the attribute values that exist at that frequency
+                    # For the gain and sa_correction attributes, calculate the power mean in dB
+                    if attr in['gain','sa_correction']:
+                        for f in merged_frequency:
+                            merged_val = np.append(merged_val,10*np.log10(np.nanmean(10**(np.array(np.where(full_frequencies==f,full_values,np.nan))/10))))
+                    else: # For the other attributes, calculate the linear mean
+                        for f in merged_frequency:
+                            merged_val = np.append(merged_val,np.nanmean((np.where(full_frequencies==f,full_values,np.nan))))
+
+                    # Set the merged attribute values to the merged calibration object
+                    merged_cal.__setattr__(attr,merged_val)
+
+                # Assign the merged calibration to the channel in the calibrations dictionary
+                calibrations[chan] = merged_cal
+            
+            # If there is only one calibration for the channel, just pull it out of the list
+            else:
+                calibrations[chan] = calibrations[chan][0]
+
+    return calibrations
 
 
 def get_Sv(data_object, linear=True, **kwargs):
