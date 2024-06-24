@@ -29,6 +29,7 @@
 """
 
 import numpy as np
+import xml.etree.ElementTree as ET
 
 class calibration(object):
     """
@@ -116,6 +117,29 @@ class calibration(object):
                                 'TwoWayBeamAngle':'equivalent_beam_angle',
                                 'Ek60TransducerGain':'gain',
                                 'SaCorrectionFactor':'sa_correction'}
+        
+        self.XML_ECHOLAB_MAP = {'Common/EnvironmentData/AbsorptionCoefficient':'absorption_coefficient',
+                                'Common/EnvironmentData/Acidity':'acidity',
+                                'CalibrationResults/Frequency':'frequency',
+                                'CalibrationResults/BeamWidthAlongship':'beam_width_alongship',
+                                'CalibrationResults/BeamWidthAthwartship':'angle_offset_alongship',
+                                'CalibrationResults/BeamWidthAthwartship':'beam_width_athwartship',
+                                'CalibrationResults/AngleOffsetAthwartship':'angle_offset_athwartship',
+                                'CalibrationResults/AngleOffsetAlongship':'angle_offset_alongship',
+                                'Common/PreviousModelParameters/AngleSensitivityAlongship':'angle_sensitivity_alongship',
+                                'Common/PreviousModelParameters/AngleSensitivityAthwartship':'angle_sensitivity_athwartship',
+                                'Common/EnvironmentData/Salinity':'salinity',
+                                'Common/EnvironmentData/SoundVelocity':'sound_speed',
+                                'Common/EnvironmentData/Temperature':'temperature',
+                                'CalibrationResults/Gain':'gain',
+                                'Common/TransceiverSetting/TransmitPower':'transmit_power',
+                                'Common/TransceiverSetting/PulseLength':'pulse_length',
+                                'Common/PreviousModelParameters/EquivalentBeamAngle':'equivalent_beam_angle',
+                                'CalibrationResults/SaCorrection':'sa_correction',
+                                'CalibrationResults/Frequency':'frequency',
+                                'Common/TransceiverSetting/FrequencyStart':'frequency_start',
+                                'Common/TransceiverSetting/FrequencyEnd':'frequency_end',
+                                'Common/TransceiverSetting/PulseForm':'pulse_form'}   
 
         # Set the initial calibration property values.
         self.channel_id = None
@@ -381,7 +405,53 @@ class calibration(object):
                         #  not really sure what to do with localcal settings
                         raise NotImplementedError('LOCALCAL settings are currently not implemented.')
 
+    def read_xml_file(self, xml_file):
+        """Read in EK80 simrad file and parses out the parameters for a given channel.
+        """
+        
+        def parse_xml_param(param, value):
 
+            #  try to map this parameter to this cal object's attribute
+            try:
+                our_param = self.XML_ECHOLAB_MAP[param]
+            except:
+                raise NotImplementedError('XML parameter ' + param +
+                        ' is not implemented.')
+            #  try to convert to a float
+            try:
+                value = float(value)
+            except:
+                try:
+                    value.strip()
+                    if ';' in value:
+                        value = value.split(';') # the simrad delimiter for LFM pulse form
+                        value = np.array([float(v) for v in value])
+                except: # There are some cases where EK80 returns an empty tag
+                    value = None
+
+            if value =='CW':
+                value = 0
+            elif value == 'LFM':
+                value = 1
+
+            return our_param, value
+        
+        tree = ET.parse(xml_file)
+        root = tree.getroot()
+
+        for tag in self.XML_ECHOLAB_MAP.keys():
+            param, value = parse_xml_param(tag,root.find('./Calibration/'+tag).text)
+            setattr(self, param, value)
+
+        # If we're FM, we're gonna add a _fm to the gain and frequency and provide the mean values for the original attributes
+        if self.pulse_form == 1:
+            setattr(self, 'gain_fm', self.gain)
+            setattr(self, 'frequency_fm', self.frequency)
+            setattr(self, 'frequency', (self.frequency_fm[0] + self.frequency_fm[-1]) / 2)
+            setattr(self, 'gain', np.interp(self.frequency, self.frequency_fm,self.gain_fm))
+
+        setattr(self, 'channel_name', root.find('./Calibration/Common/Transceiver/ChannelName').text)
+            
     def get_attribute_from_raw(self, raw_data, param_name, return_indices=None):
         """get_attribute_from_raw gets an individual attribute using the data
         within the provided raw_data object.
