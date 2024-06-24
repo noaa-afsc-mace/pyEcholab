@@ -963,6 +963,13 @@ def get_angles(data_object, **kwargs):
     return _get_processed_data(data_object, 'angles', **kwargs)
 
 
+def get_Svf(data_object, calibration, **kwargs):
+    '''
+    Calibration is required for Svf.
+    '''
+    
+    return _get_processed_data(data_object, 'Svf', calibration=calibration, **kwargs)
+
 def _get_processed_data(data_object, data_type, calibration=None,
         frequencies=None, channel_ids=None, heave_correct=False, **kwargs):
     '''_get_processed_data is an internal function that returns a dictionary,
@@ -982,7 +989,8 @@ def _get_processed_data(data_object, data_type, calibration=None,
         raw_obj = data_object.raw_data[chan][0]
 
         #  check if we're returning this channel
-        return_chan = _filter_channel(chan, raw_obj, channel_ids, frequencies)
+        return_chan = _filter_channel(chan, raw_obj, channel_ids, frequencies, data_type)
+
 
         # if we are, get all of the data
         if return_chan:
@@ -1007,6 +1015,8 @@ def _get_processed_data(data_object, data_type, calibration=None,
                 p_data = raw_obj.get_power(calibration=cal_obj, **kwargs)
             elif data_type == 'angles':
                 p_data = raw_obj.get_physical_angles(calibration=cal_obj, **kwargs)
+            elif data_type == 'Svf':
+               p_data = raw_obj.get_Svf(calibration=cal_obj, **kwargs)
 
             #  add the navigation and motion data - this takes the asynchronous NMEA
             #  and motion data and interpolates it onto the ping time axis and stores
@@ -1065,7 +1075,7 @@ def _get_processed_data(data_object, data_type, calibration=None,
     return data
 
 
-def _filter_channel(chan, raw_obj, channels, frequencies):
+def _filter_channel(chan, raw_obj, channels, frequencies,data_type):
 
     return_chan = False
     if channels is None and frequencies is None:
@@ -1076,6 +1086,9 @@ def _filter_channel(chan, raw_obj, channels, frequencies):
         return_chan = True
     elif raw_obj.get_frequency() in frequencies and chan in channels:
         return_chan = True
+    
+    if (data_type=='Svf') and (hasattr(raw_obj,'complex') is False):
+        return_chan = False # If we don't have complex we can't caluclate Svf
 
     return return_chan
 

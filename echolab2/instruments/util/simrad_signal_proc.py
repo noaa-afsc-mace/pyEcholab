@@ -297,6 +297,9 @@ def calc_hanning_window(raw_data, calibration, return_indices=None, fast=False,
         # Fast keyword is unset - we compute hanning windows and associated params for
         # all return indices.
 
+        # Compute the sample thickness
+        thickness = cal_parms['sample_interval'][0] * cal_parms['sound_speed'][0] / 2.0
+
         # Compute the filter length by ping.
         L = (cal_parms['sound_speed'] * 2 * cal_parms['pulse_duration'][0]) / thickness
 
@@ -321,17 +324,99 @@ def calc_hanning_window(raw_data, calibration, return_indices=None, fast=False,
     return w_tilde_i, N_w, t_w, t_w_n
 
 
-def calc_DFT_for_Sv(y_pc_s_n, w_tilde_i, y_mf_auto_n, N_w,
-                 n_f_points, f_m, f_s_dec, r_c_n, step):
+def freqtransf(FFTvecin, fsdec, fvec):
+        """
+        Shift FFT frequencies for specified frequencies.
+        
+        Parameters
+        ----------
+        FFTvecin : np.array
+            FFT data from decimated frequencies
+        fsdec : float
+            Decimated sampling frequency [Hz]
+        fvec : np.array
+            Specified frequencies [Hz]
+                    
+        Returns
+        -------
+        float
+            Vector with corrected frequencies [Hz]
+        """
+
+        nfft = len(FFTvecin)
+        idxtmp = np.floor(fvec / fsdec * nfft).astype("int")
+        idx = np.mod(idxtmp, nfft)
+
+        return FFTvecin[idx]
+
+def calcPower(y_pc, z_td_e, z_rx_e, nu):
+    """
+    Calculate the received power into a matched load.
+    
+    Output received power values of 0.0 are set to 1e-20.
+    
+    Parameters
+    ----------
+    y_pc : np.array
+        Pulse compressed signal [V]
+    z_td_e : float
+        Transducer electrical impedance [Ω]
+    z_rx_e : float
+        Receiver electrical impedance [Ω]
+    nu : int
+        Number of receiver channels [1]
+    
+    Returns
+    -------
+    np.array
+        Received electrical power [W]
+        
+    """
+    K1 = nu / ((2 * np.sqrt(2)) ** 2)
+    K2 = (np.abs(z_rx_e + z_td_e) / z_rx_e) ** 2
+    K3 = 1.0 / np.abs(z_td_e)
+    C1Prx = K1 * K2 * K3
+    Prx = C1Prx * np.abs(y_pc) ** 2
+    Prx[Prx == 0] = 1e-20
+
+    return Prx
+
+def calcPulseCompSphericalSpread(y_pc_n, r_c_n):
+    """
+    Calculate the spherical spreading compensation.
+    
+    Parameters
+    ----------
+    y_pc_n : np.array
+        Pulse compressed signal averaged over all transducer sectors [V]
+    r_c_n : float
+        Range to the centre of of the range volume covered by the sliding 
+        window [m]
+        
+    Returns
+    -------
+    np.array
+        Pulse compressed signal compensated for spherical spreading [Vm]
+    """
+    y_pc_s_n = y_pc_n * r_c_n
+
+    return y_pc_s_n
+
+
+def calc_DFT_for_Sv(calibration, y_pc_s_n, w_tilde_i, y_mf_auto_n, N_w,
+                 r_c_n, step):
 
     # Prepare for append
     Y_pc_v_m_n = []
     Y_tilde_pc_v_m_n = []
     svf_range = []
 
+    f_m = calibration.frequency_fft
+    f_s_dec = calibration._rx_sample_frequency_decimated[0]
+
     # DFT of auto correlation function of the matched filter signal
     _Y_mf_auto_m = np.fft.fft(y_mf_auto_n, n=N_w)
-    Y_mf_auto_m = Calculation.freqtransf(_Y_mf_auto_m,
+    Y_mf_auto_m = freqtransf(_Y_mf_auto_m,
                                          f_s_dec, f_m)
 
     min_sample = 0  # int(r0 / dr)
@@ -353,7 +438,7 @@ def calc_DFT_for_Sv(y_pc_s_n, w_tilde_i, y_mf_auto_n, N_w,
 
         # DFT of windowed data
         _Y_pc_v_m = np.fft.fft(yspread_bin, n=N_w)
-        Y_pc_v_m = Calculation.freqtransf(_Y_pc_v_m, f_s_dec, f_m)
+        Y_pc_v_m = freqtransf(_Y_pc_v_m, f_s_dec, f_m)
 
         # Normalized DFT of windowed data
         Y_tilde_pc_v_m = Y_pc_v_m / Y_mf_auto_m
@@ -368,11 +453,100 @@ def calc_DFT_for_Sv(y_pc_s_n, w_tilde_i, y_mf_auto_n, N_w,
         n_bins += 1
 
     svf_range = np.array(svf_range)
-    print('n_bins',n_bins)
 
     return Y_pc_v_m_n, Y_mf_auto_m, Y_tilde_pc_v_m_n, svf_range
 
 
+def calcPowerFreqSv(Y_tilde_pc_v_m_n, N_u, z_rx_e, z_td_e):
+        """
+        Calculate the received power spectrum for the sliding window.
+        
+        Parameters
+        ----------
+        Y_tilde_pc_v_m_n : np.array
+            DFT of the pulse compressed signal from a volume normalised by the DFT
+            of the reduced autocorrelation function for the matched filter,
+            compensated for spreading loss [1]
+        N_u : int
+            Number of transducer sectors/receiver channels
+        z_td_e : float
+            Transducer sector electric impedance [Ω]
+        z_rx_e : float
+            Receiver electric impedance [Ω]
+        
+        Returns
+        -------
+        np.array
+            DFT of the received electric power in a matched load for the signal
+            from a volume [Wm^2]
+        """
+        
+        # Initialize list of power values by range
+        P_rx_e_v_m_n = []
+
+        # Impedances
+        Z = (np.abs(z_rx_e + z_td_e) / np.abs(z_rx_e)) ** 2 / np.abs(z_td_e)
+
+        # Loop over list of FFTs along range
+        for Y_tilde_pc_v_m in Y_tilde_pc_v_m_n:
+            P_rx_e_v_m = N_u * (np.abs(Y_tilde_pc_v_m) / (2 * np.sqrt(2))) ** 2 * Z
+            # Append power to list
+            P_rx_e_v_m_n.append(P_rx_e_v_m)
+
+        return P_rx_e_v_m_n
+
+
+def calcSvf(P_rx_e_t_m_n, alpha_m, p_tx_e, lambda_m, t_w,
+                psi_m, g_0_m, c, svf_range):
+        """
+        Calculate Sv as a function of frequency.
+        
+        Parameters
+        ----------
+        P_rx_e_t_m_n : np.array
+            DFT of the received electric power [W]
+        alpha_m : float
+            Acoustic absorption [dB/m]
+        p_tx_e : float
+            Transmitted electric power [W]
+        lambda_m : float
+            Acoustic wavelength [m]
+        t_w : float
+            Sliding window duration [s]
+        psi_m : float
+            Equivalent beam angle [sr]
+        g_0_m : float
+            Transducer gain [dB]
+        c : float
+            Speed of sound [m/s]
+        svf_range : np.array
+            Range [m]
+            
+        Returns
+        -------
+        np.array
+            Sv(f) [dB re 1 m^-1]
+        """
+        
+        # Initialize list of Svf by range
+        Sv_m_n = np.empty([len(svf_range), len(alpha_m)], dtype=float)
+
+        G = (p_tx_e * lambda_m**2 * c * t_w * psi_m * g_0_m**2) / (32 * np.pi**2)
+        n = 0
+
+        # Loop over list of power values along range
+        for P_rx_e_t_m in P_rx_e_t_m_n:
+            Sv_m = (
+                10 * np.log10(P_rx_e_t_m)
+                + 2 * alpha_m * svf_range[n]
+                - 10 * np.log10(G)
+            )
+
+            # Add to array
+            Sv_m_n[n, ] = Sv_m
+            n += 1
+
+        return Sv_m_n
 
 def ek80_chirp2(f0, f1, slope, tau, fs):
     '''ek80_chirp2 returns a representation of the EK80 transmit signal
@@ -455,6 +629,31 @@ def ek80_chirp(txpower, fstart, fstop, slope, tau, z, rx_freq):
     y = y_tmp / np.max(np.abs(y_tmp))
 
     return t, y
+
+
+def calcAutoCorrelation(tx_signal):
+    """
+    Calculate the autocorrelation of the matched filter signal.
+    
+    Parameters
+    ----------
+    tx_signal : np.array
+        Transmit signal
+    Returns
+    -------
+    y_mf_auto_n : np.array
+        Autocorrelation of the input filter [1]
+    """
+    
+    y_mf_n_conj_rev = np.conj(tx_signal)[::-1]
+    y_mf_twoNormSquared = np.linalg.norm(tx_signal, 2) ** 2
+    y_mf_n_conj_rev = y_mf_n_conj_rev
+    y_mf_twoNormSquared = y_mf_twoNormSquared
+
+    # Calculate auto correlation function for matched filter
+    tx_data_auto = np.convolve(tx_signal, y_mf_n_conj_rev) / y_mf_twoNormSquared
+
+    return tx_data_auto
 
 
 def pulse_compression(raw_data, calibration, return_indices=None, fast=False):
