@@ -73,21 +73,27 @@ class results(object):
         self._iter_layer = 0
         
         self.grid = grid
-
-        self.mean_Sv = np.full((grid.n_intervals, grid.n_layers), np.nan)
-        self.nasc = np.full((grid.n_intervals, grid.n_layers), np.nan)
-        self.min_Sv = np.full((grid.n_intervals, grid.n_layers), np.nan)
-        self.max_Sv = np.full((grid.n_intervals, grid.n_layers), np.nan)
-        self.mean_height = np.full((grid.n_intervals, grid.n_layers), np.nan)
-        self.good_samples = np.full((grid.n_intervals, grid.n_layers), np.nan)
-        self.no_data_samples = np.full((grid.n_intervals, grid.n_layers), np.nan)
-        self.excluded_samples = np.full((grid.n_intervals, grid.n_layers), np.nan)
-        self.total_samples = np.full((grid.n_intervals, grid.n_layers), np.nan)
-        self.min_sv_threshold_applied = np.full((grid.n_intervals, grid.n_layers), np.nan)
-        self.max_sv_threshold_applied = np.full((grid.n_intervals, grid.n_layers), np.nan)
+        
+        
+        grid_shape = (grid.n_intervals, grid.n_layers)
+        if grid.grid_data:
+            if grid.grid_data.data.ndim > 2:
+                grid_shape = (grid.n_intervals, grid.n_layers,grid.grid_data.data.shape[-1])
+        
+        self.mean_Sv = np.full(grid_shape, np.nan)
+        self.nasc = np.full(grid_shape, np.nan)
+        self.min_Sv = np.full(grid_shape, np.nan)
+        self.max_Sv = np.full(grid_shape, np.nan)
+        self.mean_height = np.full(grid_shape, np.nan)
+        self.good_samples = np.full(grid_shape, np.nan)
+        self.no_data_samples = np.full(grid_shape, np.nan)
+        self.excluded_samples = np.full(grid_shape, np.nan)
+        self.total_samples = np.full(grid_shape, np.nan)
+        self.min_sv_threshold_applied = np.full(grid_shape, np.nan)
+        self.max_sv_threshold_applied = np.full(grid_shape, np.nan)
 #        self.thickness_mean = np.full((grid.n_intervals, grid.n_layers), np.nan)
-        self.exclude_below_line_mean = np.full((grid.n_intervals, grid.n_layers), np.nan)
-        self.exclude_above_line_mean = np.full((grid.n_intervals, grid.n_layers), np.nan)
+        self.exclude_below_line_mean = np.full(grid_shape, np.nan)
+        self.exclude_above_line_mean = np.full(grid_shape, np.nan)
 
     def export_to_csv(self, filename, output_empty_cells=False):
         
@@ -405,10 +411,10 @@ class integrator(object):
                 
                 #  Now compute the mean and some other bits
                 if np.nansum(cell_data_included) > 0:
-                    cell_mean_sv = np.nanmean(cell_data_included)
-                    cell_min_sv = np.nanmin(cell_data_included)
-                    cell_max_sv = np.nanmax(cell_data_included)
-                    if cell_mean_sv > 1e-100:
+                    cell_mean_sv = np.nanmean(cell_data_included,axis=0)
+                    cell_min_sv = np.nanmin(cell_data_included,axis=0)
+                    cell_max_sv = np.nanmax(cell_data_included,axis=0)
+                    if cell_mean_sv.any() > 1e-100:
                         cell_mean_Sv = 10.0 * np.log10(cell_mean_sv)
                         cell_max_Sv = 10.0 * np.log10(cell_max_sv)
                         cell_nasc = cell_mean_sv * cell_thickness * 4 * np.pi * 1852**2
@@ -416,7 +422,7 @@ class integrator(object):
                         cell_mean_Sv = -999
                         cell_max_Sv = -999
                         cell_nasc= 0
-                    if cell_min_sv > 1e-100:
+                    if cell_min_sv.any() > 1e-100:
                         cell_min_Sv = 10.0 * np.log10(cell_min_sv)
                     else:
                         cell_min_Sv = -999
