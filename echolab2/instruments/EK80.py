@@ -3299,6 +3299,7 @@ class raw_data(ping_data):
         setattr(p_data, 'sample_thickness', svf_range[1]-svf_range[0])
         setattr(p_data, 'range', svf_range)
         p_data.add_data_attribute('Svf', p_data.data)
+        p_data.is_log = True
         setattr(p_data, 'frequency', calibration.frequency_fft)
 
         delattr(calibration, 'frequency_fft')
