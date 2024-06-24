@@ -3174,6 +3174,11 @@ class raw_data(ping_data):
 
 
     def get_Svf(self, calibration, step=0.5, frequency_resolution=None):
+        '''
+        step: vertical window step in meters. Default is 0.5 m
+
+        frequency_resolution : frequency resolution of the output data in Hz
+        '''
         
         def compute_absorption_fm(data, f_m):
 
