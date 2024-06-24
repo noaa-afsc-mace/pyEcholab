@@ -1080,11 +1080,11 @@ def _filter_channel(chan, raw_obj, channels, frequencies,data_type):
     return_chan = False
     if channels is None and frequencies is None:
         return_chan = True
-    elif channels is None and raw_obj.get_frequency() in frequencies:
+    elif channels is None and raw_obj.configuration[0]['transducer_frequency'] in frequencies:
         return_chan = True
     elif frequencies is None and chan in channels:
         return_chan = True
-    elif raw_obj.get_frequency() in frequencies and chan in channels:
+    elif raw_obj.configuration[0]['transducer_frequency'] in frequencies and chan in channels:
         return_chan = True
     
     if (data_type=='Svf') and (hasattr(raw_obj,'complex') is False):
