@@ -3173,57 +3173,135 @@ class raw_data(ping_data):
         return p_data, return_indices
 
 
-    def get_Svf(self, f_start, f_end, n_steps, calibration=None, linear=False,
-            return_depth=False, clear_cache=True, **kwargs):
+    def get_Svf(self, calibration, step=0.5, frequency_resolution=None):
+        
+        def compute_absorption_fm(data, f_m):
 
+            def alphaFG(c, pH, T, D, S,f): # requires sound speed (m/s), pH, temp(C), depth(m), salinity(ppt), and nominal frequency(kHz)
+                    # Attenuation Coefficient is based on Francois and Garrison, 1982 - "Sound absorption based on ocean measurements.
+                    # Boric Acid Contribution, P1 = 1. This is buried in echolab.simrad_calibration and I can't figure out how to apply to the 
+                    # full range of frequencies and not the nominal frequency parameter in the raw data
+                    A1=((8.86/c)*(10**(0.78*pH-5)))
+                    f1=((2.8*((S/35)**0.5))*(10**(4-(1245/(T+273)))))
+                    # MgSO4 Contribution
+                    A2=((21.44*(S/c))*(1+(0.025*T)))
+                    P2=(1-(1.37*(10**-4)*D)+(6.2*(10**-9)*(D**2)))
+                    f2=((8.17*(10**(8-(1990/(T+273)))))/(1+.0018*(S-35)))
+                    # Pure water contribution, where A3 is temperature dependent
+                    if T > 20:
+                        A3=((3.964*(10**-4))-(1.146*(10**-5)*T)+(1.45*(10**-7)*(T**2))-(6.5*(10**-10)*(T**3)))
+                    else:
+                        A3=((4.937*(10**-4))-(2.59*(10**-5)*T)+(9.11*(10**-7)*(T**2))-(1.5*(10**-8)*(T**3)))
+                    P3=((1-(3.83*(10**-5)*D)) + (4.9*(10**-10)*(D**2)))
+                    # Calculate and return Alpha
+                    alpha = (((f**2)*A1*f1)/(((f1**2)) + (f**2)))+ ((A2*P2*f2*(f**2))/((f2**2) + (f**2))) + (A3*P3*(f**2))
+                    return alpha
 
-        # Check if user provided a cal object
-        if calibration is None:
-            # No - get one populated from raw data
-            calibration = self.get_calibration()
+            env = data.environment[data.environment != np.array(None)][0]
+            alpha_fm = np.array([alphaFG(env['sound_speed'],env['acidity'],env['temperature'],env['depth'],env['salinity'],nomf/1000)/1000 for nomf in f_m])
 
-        #  create the return frequency vector
-        f_range = np.linspace(f_start, f_end, n_steps)
+            return alpha_fm
+        
+        def compute_psi_fm(psi_f_n, f_n, f_m):
+            """
+            Calculate psi at given frequency.
 
-        # Get the sector averaged complex data
+            Parameters
+            ----------
+            psi_f_n : float
+                    Psi at nominal frequency [sr]
+            f_n : float
+                    Nominal frequency [Hz]
+            f_m : float
+                    Frequency to calculate psi at [Hz]
+                    
+            Returns
+            -------
+            float 
+                    Psi at frequency `f_m` [sr]
+            """
+            return psi_f_n * (f_n / f_m) ** 2
+        
+        def get_range_vector(data):
+            """
+            get_range_vector returns a non-corrected range vector.
+            """
+            # Calculate the thickness of samples with this sound speed.
+            thickness = data.sample_interval[0] * data.sound_velocity[0] / 2.0
+            # Calculate the range vector.
+            range = (np.arange(0, data.n_samples) + data.sample_offset[0]) * thickness
+            range[0] = 1e-20
+
+            return range
+        
+        if frequency_resolution is None:
+            setattr(calibration, 'frequency_fft', calibration.frequency_fm)
+            setattr(calibration, 'gain_fft', calibration.gain_fm)
+        else:
+            setattr(calibration, 'frequency_fft', np.arange(calibration.frequency_start,calibration.frequency_end+1,frequency_resolution))
+            setattr(calibration,'gain_fft',np.interp(np.arange(calibration.frequency_start, calibration.frequency_end+1, frequency_resolution),
+                                            calibration.frequency_fm,calibration.gain_fm))
+        
+                # Get the sector averaged complex data
         p_data, return_indices = self._get_complex(calibration=calibration,
-                return_depth=False, clear_cache=False, linear=True, **kwargs)
-
-        # Adjust for spherical loss
-        p_data.complex *= p_data.range
+                return_depth=False, clear_cache=False, linear=True)
 
         # get the tx signal properties - these were created and cached when
         # _get_complex() was called above.
         tx_data, tau_eff = simrad_signal_proc.create_ek80_tx(self,
-                calibration, return_pc=True, return_indices=return_indices,
-                **kwargs)
+                calibration, return_pc=True, return_indices=return_indices)
 
-        w_tilde_i, N_w, t_w, t_w_n = simrad_signal_proc.calc_hanning_window(raw_data,
-                calibration, return_indices=return_indices, **kwargs)
+        w_tilde_i, N_w, t_w, t_w_n = simrad_signal_proc.calc_hanning_window(self,
+                calibration, return_indices=return_indices)
+        
+        alpha_m = compute_absorption_fm(self,calibration.frequency_fft)
 
-        #  consider the use of np.vectorize
+        f_nom =calibration.get_parameter(self, 'transducer_frequency', 0)
+        psi_m = compute_psi_fm(10**(calibration.equivalent_beam_angle/10),f_nom,calibration.frequency_fft)
+        lambda_m =   1470 /  calibration.frequency_fft#cal_objects_xml[chan].sound_speed /  cal_objects_xml[chan].frequency
+        g_m = 10**(calibration.gain_fft/10)
+        
+        svf_data = []
+        for ping_no in return_indices:
+            y_rx_nu = self.complex[ping_no]
+            y_rx_nu = np.array([np.array([k[0] for k in y_rx_nu]), np.array([k[1] for k in y_rx_nu]),np.array([k[2] for k in y_rx_nu]),np.array([k[3] for k in y_rx_nu])])
+            y_pc_nu = simrad_signal_proc.pulse_compression(self,calibration=calibration)
+            y_pc_n = np.mean(y_pc_nu,axis=2)
+
+            r_n = get_range_vector(self)            
+            y_pc_s_n = simrad_signal_proc.calcPulseCompSphericalSpread(y_pc_n, r_n)
+            y_mf_auto_n =  simrad_signal_proc.calcAutoCorrelation(tx_data[ping_no])
+
+            y_mf_auto_n =  simrad_signal_proc.calcAutoCorrelation(tx_data[ping_no])
+
+            
+            Y_pc_v_m_n, Y_mf_auto_m, Y_tilde_pc_v_m_n, svf_range = simrad_signal_proc.calc_DFT_for_Sv(calibration,
+                y_pc_s_n[ping_no], w_tilde_i[ping_no], y_mf_auto_n, N_w[ping_no], r_n, step=min(range(len(r_n)), key=lambda i: abs(r_n[i]-step))+1)
+
+            P_rx_e_t_m_n = simrad_signal_proc.calcPowerFreqSv(Y_tilde_pc_v_m_n, self.complex.shape[2], self.ZTRANSCEIVER, self.ZTRANSDUCER)
+
+            Sv_m_n = simrad_signal_proc.calcSvf(
+                    P_rx_e_t_m_n, alpha_m, self.transmit_power[ping_no], lambda_m, t_w[ping_no], psi_m, g_m, calibration.sound_speed, svf_range)
+            svf_data.append(Sv_m_n)
+
+        # Set the data attribute in the processed_data object. This is the generic
+        # label we use within pyEcholab to access data within processed data objects.
+        p_data.data = np.array(svf_data)
+
+        # Also create an attribute named after the data type that points to our data.
+        # Some people think their code is more readable when they use the this label.
+        setattr(p_data, 'n_samples', len(Sv_m_n))
+        setattr(p_data, 'sample_thickness', svf_range[1]-svf_range[0])
+        setattr(p_data, 'range', svf_range)
+        p_data.add_data_attribute('Svf', p_data.data)
+        setattr(p_data, 'frequency', calibration.frequency_fft)
+
+        delattr(calibration, 'frequency_fft')
+        delattr(calibration, 'gain_fft')
+
+        return p_data
 
 
-
-
-
-
-#        # Set the data type and is_log attribute.
-#        if linear:
-#            attribute_name = 'sv'
-#            p_data.is_log = False
-#
-#        else:
-#            attribute_name = 'Sv'
-#            p_data.is_log = True
-#        p_data.data_type = attribute_name
-
-        # check if we're clearing the cached intermediate data in the cal object
-        if clear_cache:
-            calibration.clear_cache()
-
-
-        return w_tilde_i, N_w, t_w, t_w_n
 
 
     def get_sv(self, **kwargs):
