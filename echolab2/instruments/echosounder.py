@@ -472,7 +472,10 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None):
                         merged_val=merged_val[0]
                     # Set the merged attribute values to the merged calibration object
                     merged_cal.__setattr__(attr,merged_val)
-
+                
+                if len(merged_frequency)>1:
+                    merged_cal.__setattr__('frequency_fm',merged_frequency)
+                    
                 # Assign the merged calibration to the channel in the calibrations dictionary
                 calibrations[chan] = merged_cal
             
