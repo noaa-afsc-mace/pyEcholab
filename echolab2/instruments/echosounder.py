@@ -432,7 +432,13 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None):
                     for cal in calibrations[chan]: 
                         
                         # get the attribute as a function of frequency
-                        current_frequency, current_gain = cal.frequency, getattr(cal,attr)
+                        if cal.pulse_form == 0:
+                            current_frequency, current_gain = cal.frequency, getattr(cal,attr)
+                        else:
+                            if attr == 'gain':
+                                attr = 'gain_fm'
+                            current_frequency, current_gain = cal.frequency_fm, getattr(cal,attr)
+
                         
                         # If the frequency/attribute is not an array (CW data), make it an array
                         if ~isinstance(current_frequency,np.ndarray):
@@ -444,7 +450,10 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None):
                         if merged_frequency.size==0:
                             merged_frequency = current_frequency
                         else: # otherwise append the current frequency array to the merged frequency array and select only the unique values
-                            merged_frequency = np.unique(np.concatenate((merged_frequency,current_frequency),0))
+                            if cal.pulse_form == 0:
+                                merged_frequency = np.unique(np.concatenate((merged_frequency,current_frequency),0))
+                            else:
+                                merged_frequency = np.unique(np.concatenate((merged_frequency,current_frequency),1))
                         
                         # Append the current frequency and attribute values to the all frequency and attribute arrays
                         full_frequencies = np.append(full_frequencies,current_frequency)
@@ -452,13 +461,15 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None):
 
                     # For each frequency in the new merged frequency array, calculate the mean of the attribute values that exist at that frequency
                     # For the gain and sa_correction attributes, calculate the power mean in dB
-                    if attr in['gain','sa_correction']:
+                    if attr in['gain','gain_fm','sa_correction']:
                         for f in merged_frequency:
                             merged_val = np.append(merged_val,10*np.log10(np.nanmean(10**(np.array(np.where(full_frequencies==f,full_values,np.nan))/10))))
                     else: # For the other attributes, calculate the linear mean
                         for f in merged_frequency:
                             merged_val = np.append(merged_val,np.nanmean((np.where(full_frequencies==f,full_values,np.nan))))
 
+                    if len(merged_val)==1:
+                        merged_val=merged_val[0]
                     # Set the merged attribute values to the merged calibration object
                     merged_cal.__setattr__(attr,merged_val)
 
@@ -1001,10 +1012,10 @@ def _get_processed_data(data_object, data_type, calibration=None,
                     cal_obj = calibration[chan]
                 else:
                     #  cal dict provided but this channel not in it - get from raw
-                    cal_obj = raw_obj.get_calibration(**kwargs)
+                    cal_obj = raw_obj.get_calibration()
             else:
                 #  no cal provided - get one using the raw file parameters
-                cal_obj = raw_obj.get_calibration(**kwargs)
+                cal_obj = raw_obj.get_calibration()
 
             #  then get the data
             if data_type == 'Sv':
