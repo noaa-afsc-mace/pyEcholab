@@ -395,7 +395,6 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None):
         # Read the calibration file
         cal = EK80.ek80_calibration()
         cal.read_xml_file(file)
-
         # Get the channel name from the calibration file and find the corresponding channel_id in the data_object
         try: # If the channel ends in a number, include it in the channel ID
             int(cal.channel_name.split('-')[-1])
@@ -439,21 +438,18 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None):
                                 attr = 'gain_fm'
                             current_frequency, current_gain = cal.frequency_fm, getattr(cal,attr)
 
-                        
                         # If the frequency/attribute is not an array (CW data), make it an array
-                        if ~isinstance(current_frequency,np.ndarray):
+                        if not isinstance(current_frequency,np.ndarray):
                             current_frequency = np.array([current_frequency])
-                        if ~isinstance(current_gain,np.ndarray):
+
+                        if not isinstance(current_gain,np.ndarray):
                             current_gain = np.array([current_gain])
-                        
+                            
                         # If the merged frequency array is empty, just add the current frequency array to it
                         if merged_frequency.size==0:
                             merged_frequency = current_frequency
                         else: # otherwise append the current frequency array to the merged frequency array and select only the unique values
-                            if cal.pulse_form == 0:
-                                merged_frequency = np.unique(np.concatenate((merged_frequency,current_frequency),0))
-                            else:
-                                merged_frequency = np.unique(np.concatenate((merged_frequency,current_frequency),1))
+                            merged_frequency = np.unique(np.concatenate((merged_frequency,current_frequency),0))
                         
                         # Append the current frequency and attribute values to the all frequency and attribute arrays
                         full_frequencies = np.append(full_frequencies,current_frequency)
