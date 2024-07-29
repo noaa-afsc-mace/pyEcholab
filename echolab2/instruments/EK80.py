@@ -3265,20 +3265,17 @@ class raw_data(ping_data):
         psi_m = compute_psi_fm(10**(calibration.equivalent_beam_angle/10),f_nom,calibration.frequency_fft)
         lambda_m =   1470 /  calibration.frequency_fft#cal_objects_xml[chan].sound_speed /  cal_objects_xml[chan].frequency
         g_m = 10**(calibration.gain_fft/10)
-        
         svf_data = []
+        
+        y_pc_nu = simrad_signal_proc.pulse_compression(self,calibration=calibration)
+        y_pc_n = np.mean(y_pc_nu,axis=2)
+        r_n = get_range_vector(self)  
+        y_pc_s_n = simrad_signal_proc.calcPulseCompSphericalSpread(y_pc_n, r_n)
+
         for ping_no in return_indices:
-            y_rx_nu = self.complex[ping_no]
-            y_rx_nu = np.array([np.array([k[0] for k in y_rx_nu]), np.array([k[1] for k in y_rx_nu]),np.array([k[2] for k in y_rx_nu]),np.array([k[3] for k in y_rx_nu])])
-            y_pc_nu = simrad_signal_proc.pulse_compression(self,calibration=calibration)
-            y_pc_n = np.mean(y_pc_nu,axis=2)
-
-            r_n = get_range_vector(self)            
-            y_pc_s_n = simrad_signal_proc.calcPulseCompSphericalSpread(y_pc_n, r_n)
             y_mf_auto_n =  simrad_signal_proc.calcAutoCorrelation(tx_data[ping_no])
 
             y_mf_auto_n =  simrad_signal_proc.calcAutoCorrelation(tx_data[ping_no])
-
             
             Y_pc_v_m_n, Y_mf_auto_m, Y_tilde_pc_v_m_n, svf_range = simrad_signal_proc.calc_DFT_for_Sv(calibration,
                 y_pc_s_n[ping_no], w_tilde_i[ping_no], y_mf_auto_n, N_w[ping_no], r_n, step=min(range(len(r_n)), key=lambda i: abs(r_n[i]-step))+1)
