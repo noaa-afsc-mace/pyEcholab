@@ -30,6 +30,7 @@
 
 import numpy as np
 import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ET
 
 class calibration(object):
     """
@@ -443,8 +444,14 @@ class calibration(object):
             param, value = parse_xml_param(tag,root.find('./Calibration/'+tag).text)
             setattr(self, param, value)
 
-        setattr(self, 'channel_name', root.find('./Calibration/Common/Transceiver/ChannelName').text)
+        # If we're FM, we're gonna add a _fm to the gain and frequency and provide the mean values for the original attributes
+        if self.pulse_form == 1:
+            setattr(self, 'gain_fm', self.gain)
+            setattr(self, 'frequency_fm', self.frequency)
+            setattr(self, 'frequency', (self.frequency_fm[0] + self.frequency_fm[-1]) / 2)
+            setattr(self, 'gain', np.interp(self.frequency, self.frequency_fm,self.gain_fm))
 
+        setattr(self, 'channel_name', root.find('./Calibration/Common/Transceiver/ChannelName').text)
             
     def get_attribute_from_raw(self, raw_data, param_name, return_indices=None):
         """get_attribute_from_raw gets an individual attribute using the data
