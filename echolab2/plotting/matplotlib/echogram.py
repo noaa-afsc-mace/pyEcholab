@@ -121,6 +121,10 @@ class Echogram(object):
                 self.data_attribute = data_attribute
         else:
             self.data_attribute = data_object.data
+        
+        # If we're working with FM data, power average across the band 
+        if len(np.unique(self.data_object.frequency)) > 1: 
+            self.data_attribute = 10*np.log10(np.nanmean(10**(self.data_attribute/10),axis=2))
 
         # Store the display thresholds.
         self.threshold = threshold
