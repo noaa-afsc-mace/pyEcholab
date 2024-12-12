@@ -429,11 +429,12 @@ class calibration(object):
                         value = np.array([float(v) for v in value])
                 except: # There are some cases where EK80 returns an empty tag
                     value = None
-
-            if value =='CW':
-                value = 0
-            elif value == 'LFM':
-                value = 1
+                    
+            if isinstance(value, str):
+                if value =='CW':
+                    value = 0
+                elif value == 'LFM':
+                    value = 1
 
             return our_param, value
         
