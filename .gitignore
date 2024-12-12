@@ -155,3 +155,4 @@ test/ek80_z_offset_bug_test_2.py
 test/interleave_test.py
 test/loadfile.py
 test/vlw_from_idx_to_raw.py
+*.url
