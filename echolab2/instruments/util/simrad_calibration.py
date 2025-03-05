@@ -113,7 +113,7 @@ class calibration(object):
                                 'Temperature':'temperature',
                                 'TransducerGain':'gain',
                                 'TransmittedPower':'transmit_power',
-                                'TransmittedPulseLength':'pulse_length',
+                                'TransmittedPulseLength':'pulse_duration',
                                 'TvgRangeCorrection':'tvg_range_correction',
                                 'TwoWayBeamAngle':'equivalent_beam_angle',
                                 'Ek60TransducerGain':'gain',
@@ -134,7 +134,7 @@ class calibration(object):
                                 'Common/EnvironmentData/Temperature':'temperature',
                                 'CalibrationResults/Gain':'gain',
                                 'Common/TransceiverSetting/TransmitPower':'transmit_power',
-                                'Common/TransceiverSetting/PulseLength':'pulse_length',
+                                'Common/TransceiverSetting/PulseLength':'pulse_duration',
                                 'Common/PreviousModelParameters/EquivalentBeamAngle':'equivalent_beam_angle',
                                 'CalibrationResults/SaCorrection':'sa_correction',
                                 'CalibrationResults/Frequency':'frequency',
@@ -420,13 +420,13 @@ class calibration(object):
                         ' is not implemented.')
             #  try to convert to a float
             try:
-                value = float(value)
+                value = np.float32(value)
             except:
                 try:
                     value.strip()
                     if ';' in value:
                         value = value.split(';') # the simrad delimiter for LFM pulse form
-                        value = np.array([float(v) for v in value])
+                        value = np.array([np.float32(v) for v in value])
                 except: # There are some cases where EK80 returns an empty tag
                     value = None
                     
@@ -443,7 +443,7 @@ class calibration(object):
 
         for tag in self.XML_ECHOLAB_MAP.keys():
             param, value = parse_xml_param(tag,root.find('./Calibration/'+tag).text)
-            setattr(self, param, value)
+            setattr(self, param, np.float32(value))
 
         # If we're FM, we're gonna add a _fm to the gain and frequency and provide the mean values for the original attributes
         if self.pulse_form == 1:
