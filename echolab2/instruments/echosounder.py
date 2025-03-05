@@ -357,7 +357,7 @@ def get_calibration_from_ecs(data_object, ecs_file, channel_map=None, **kwargs):
     return calibrations
 
 
-def get_calibration_from_xml(data_object,xml_files,calibrations = None):
+def get_calibration_from_xml(data_object,xml_files,calibrations = None, apply_to_matching_channels = True):
  
     '''get_calibration_from_xml returns a dictionary, keyed by channel ID,
     containing a calibration object populated with data extracted from the
@@ -378,6 +378,9 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None):
 
     calibration (dict): Provide an already existing calibration dictionary keyed
         by channel ID to append new channels.
+
+    apply_to_matching_channels (bool): Set this to True to apply the calibration
+        to all matching channels, i.e., active to passive.
     
     '''
  
@@ -404,7 +407,8 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None):
         chan  = [s for s in data_object.channel_ids if xml_chan in s][0]
 
         # If the channel pulse form matches the pulse form of the data, add the calibration to the dictionary
-        if cal.pulse_form == data_object.get_channel_data()[chan][0].pulse_form[0]:
+        match = _compare_pulse(data_object.get_channel_data()[chan][0],cal)
+        if match:
             if chan not in calibrations.keys():
                 calibrations[chan] = []
             calibrations[chan].append(cal)
@@ -478,6 +482,21 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None):
             # If there is only one calibration for the channel, just pull it out of the list
             else:
                 calibrations[chan] = calibrations[chan][0]
+    
+    # If apply_to_matching_channels is set to True, apply the calibration to all matching channels, i.e., active to passive
+    if apply_to_matching_channels:
+        
+        # For each channel still missing a calibration, find the matching channel
+        for chan in [s for s in data_object.channel_ids if s not in calibrations.keys()]:
+            matching_channel = _find_matching_channel(data_object,chan)
+            
+            # If a matching channel is found, apply the calibration to the missing channel
+            if matching_channel is not None:
+                calibrations[chan] = calibrations[matching_channel]
+
+    # Warn if there are channels in the data object that do not have a calibration
+    for chan in  [s for s in data_object.channel_ids if s not in calibrations.keys()]:
+        print('Warning: No calibration found for channel: ',chan)
 
     return calibrations
 
@@ -1123,177 +1142,58 @@ def _check_filetype(filename):
     else:
        return -1
 
+def _find_matching_channel(raw_obj,channel_id):
+        '''
+        Simple approach to finding matching channel based on pre-defined attributes. Acts a 
+        a helper function for the get_calibration_from_xml function to find the matching channels
+        via _compare_pulse function.
+        '''
+
+        # Simplest approach, look for the matching transceiver name
+        for ch_id in raw_obj.channel_ids:
+            matching = [s for s in raw_obj.channel_ids if channel_id[:-2] in s and s!=channel_id]
+        
+        # If there are any other channels with matching transciever names, check if the other attributes match
+        if matching:
+            for ch in matching:
+                all_match = _compare_pulse(raw_obj.get_channel_data()[channel_id][0],raw_obj.get_channel_data()[ch][0])
+                
+                # If all attributes match, return the channel
+                if all_match:
+                    return ch                        
+        # If no matching channel is found, return None
+        else:
+            return None
+
+def _compare_pulse(primary_obj,secondary_obj):
+    '''
+    Compares the pulse attributes between two data objects (raw, processed, calibration)
+    and returns True if all attributes match, False if any do not match.
+    
+    primary_obj (object): raw or processed data object
+
+    secondary_obj (object): raw, processed, or calibration data object
+    '''
+
+    # Attrubutes to compare based on pulse form
+    if primary_obj.is_fm():
+        pulse_attrs = ['pulse_form','frequency_end','pulse_duration','transmit_power']
+    else:
+        pulse_attrs = ['pulse_form','frequency','pulse_duration','transmit_power']
+
+    all_match = True # Assume they match until proven otherwise
+    
+    for attr in pulse_attrs:
+        # Check if the attribute exists in both channels
+        if hasattr(secondary_obj,attr):
+            # Check if the attribute values match
+            if np.unique(getattr(primary_obj,attr))[0] != np.unique(getattr(secondary_obj,attr))[0]:
+                all_match = False
+        else:
+            all_match = False
+
+    return all_match
 
 
 class UnknownFormatError(Exception):
     pass
-
-
-
-
-#def get_Sv(data_object, calibration=None, frequencies=None,
-#        channel_ids=None, heave_correct=False, **kwargs):
-#    '''get_Sv returns a dictionary, keyed by channel ID, containing
-#        aprocessed_data objects containing Sv or sv data.
-#
-#        The frequencies and channels keywords can be set to limit what
-#        data is returned. These keywords can be applied together.
-#
-#        frequencies (list): Set this to a list containing the frequencies to
-#            return data from.
-#
-#            Default: None (return all frequencies)
-#
-#        channel_ids (list): Set this to a list containing the channel IDs to
-#            return data from.
-#
-#            Default: None (return all channels)
-#
-#        return_indices (np.array uint32): Set this to a numpy array that contains
-#            the index values to return in the processed data object. This can be
-#            used for more advanced anipulations where start/end ping/time are
-#            inadequate.
-#
-#            Default: None (return all pings)
-#
-#        calibration (EK80.ek80_calibration): Set to an instance of
-#            EK80.ek80_calibration containing the calibration parameters
-#            you want to use when transforming to Sv/sv. If no calibration
-#            object is provided, the values will be extracted from the raw
-#            data.
-#
-#            Default: None
-#
-#        linear (bool): Set to True if getting "sv" data
-#
-#            Default: False
-#
-#        tvg_correction (bool): Set to True to apply TVG range correction.
-#            Typically you want to leave this at True.
-#
-#            Default: True
-#
-#        return_depth (bool): Set to True to return a processed_data object
-#            with a depth axis. When False, the processed_data object has
-#            a range axis.
-#
-#            Default: False
-#
-#        heave_correct (bool): Set to True to return a processed_data object
-#            that has heave correction applied. Heave correction shifts samples
-#            vertically to compensate for the sounder platform's vertical motion.
-#            Heave corrected data is always returned as depth.
-#
-#            Default: False
-#
-#        start_time (datetime64): Set to a numpy datetime64 oject specifying
-#            the start time of the data to convert. All data between the start
-#            and end time will be returned. If set to None, the start time is
-#            the first ping.
-#
-#            Default: None
-#
-#        end_time (datetime64): Set to a numpy datetime64 oject specifying
-#            the end time of the data to convert. All data between the start
-#            and end time will be returned. If set to None, the end time is
-#            the last ping.
-#
-#            Default: None
-#
-#        start_ping (int): Set to an integer specifying the first ping number
-#            to return. All pings between the start and end ping will be
-#            returned. If set to None, the first ping is set as the start ping.
-#
-#            Default: None
-#
-#        end_ping (int): Set to an integer specifying the end ping number
-#            to return. All pings between the start and end ping will be
-#            returned. If set to None, the last ping is set as the end ping.
-#
-#            Default: None
-#
-#    '''
-#
-#    data = {}
-#
-#    #  iterate thru all of the channels
-#    for chan in data_object.raw_data:
-#
-#        #  get a reference to this channel's raw data
-#        raw_obj = data_object.raw_data[chan][0]
-#
-#        #  check if we're returning this channel
-#        return_chan = _filter_channel(chan, raw_obj, channel_ids, frequencies)
-#
-#        # if we are, get all of the data
-#        if return_chan:
-#            #  first, get a calibration object for this channel
-#            if calibration:
-#                if chan in calibration:
-#                    #  one is provided
-#                    cal_obj = calibration[chan]
-#                else:
-#                    #  cal dict provided but this channel not in it - get from raw
-#                    cal_obj = raw_obj.get_calibration(**kwargs)
-#            else:
-#                #  no cal provided - get one using the raw file parameters
-#                cal_obj = raw_obj.get_calibration(**kwargs)
-#
-#            #  then get the data
-#            sv_data = raw_obj.get_Sv(calibration=cal_obj, **kwargs)
-#
-#            #  add the navigation and motion data - this takes the asynchronous NMEA
-#            #  and motion data and interpolates it onto the ping time axis and stores
-#            #  the data in the processed data object.
-#
-#            #  first add the NMEA data - This will add the position, speed, attitude,
-#            #  and distance meta-types (see instruments.util.nmea_data for more info)
-#            sv_data.set_navigation(data_object.nmea_data)
-#
-#            #  then add the motion data - we'll check if we have lat data from the NMEA
-#            #  data and if not, try to get it from the motion data. Some EK80 configurations
-#            #  may only store lat/lon in the motion data and not as NMEA data.
-#            if not hasattr(sv_data, 'latitude'):
-#                #  we didn't get lat/lon from the NMEA data so try to get it from motion data
-#                sv_data.set_motion(data_object.motion_data, motion_attributes=['pitch',
-#                        'roll', 'heave', 'heading', 'latitude', 'longitude'])
-#            else:
-#                #  we have lat (and presumably lon) data so we just get the "regular" motion
-#                #  data (pitch, roll, heave, heading)
-#                sv_data.set_motion(data_object.motion_data)
-#
-#            #  apply heave correction if needed - this has no effect if heave
-#            #  data is not available.
-#            if heave_correct:
-#                sv_data.heave_correct()
-#
-#            #  get the bottom detection data. This method will automatically
-#            #  correct depths as needed if the calibration sound speed is different
-#            #  from the sound speed at the time of collection.
-#            bottom_line = raw_obj.get_bottom(calibration=cal_obj, **kwargs)
-#
-#            if bottom_line is not None:
-#                #  Bottom data is always recorded as depth with heave correction applied,
-#                #  so we need to back out transducer Z offset and/or heave (if applicable)
-#                #  when returning sample data with range as the vertical axis
-#                v_axis = sv_data.get_v_axis()[1]
-#                if v_axis == 'range':
-#                    #  the transducer_draft attribute of the bottom line contains both
-#                    #  the z offset and heave. We simply subtract these values from the
-#                    #  line data to get the line in range.
-#                    bottom_line = bottom_line - bottom_line.transducer_draft
-#                else:
-#                    #  we're returning data as depth. We don't need to back out transducer
-#                    #  z offset, but we have to back out heave correction if the user has
-#                    #  not heave corrected the sample data
-#                    if not heave_correct:
-#                        #  heave correction is not set, subtract heave from the bottom line
-#                        bottom_line = bottom_line - sv_data.heave
-#
-#                #  insert the bottom detection line into the processed data object
-#                sv_data.bottom_line = bottom_line
-#
-#            #  and add the data to our return dict
-#            data[chan] = sv_data
-#
-#    return data
