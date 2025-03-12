@@ -3173,7 +3173,7 @@ class raw_data(ping_data):
         return p_data, return_indices
 
 
-    def get_Svf(self, calibration, step=0.5, frequency_resolution=None):
+    def get_Svf(self, calibration, step=0.5, linear=False, frequency_resolution=None):
         '''
         step: vertical window step in meters. Default is 0.5 m
 
@@ -3240,12 +3240,12 @@ class raw_data(ping_data):
             return range
         
         if frequency_resolution is None:
-            setattr(calibration, 'frequency_fft', calibration.frequency_fm)
-            setattr(calibration, 'gain_fft', calibration.gain_fm)
+            setattr(calibration, 'frequency_fft', calibration.frequency)
+            setattr(calibration, 'gain_fft', calibration.gain)
         else:
             setattr(calibration, 'frequency_fft', np.arange(calibration.frequency_start,calibration.frequency_end+1,frequency_resolution))
             setattr(calibration,'gain_fft',np.interp(np.arange(calibration.frequency_start, calibration.frequency_end+1, frequency_resolution),
-                                            calibration.frequency_fm,calibration.gain_fm))
+                                            calibration.frequency,calibration.gain))
         
                 # Get the sector averaged complex data
         p_data, return_indices = self._get_complex(calibration=calibration,
@@ -3289,6 +3289,9 @@ class raw_data(ping_data):
         # Set the data attribute in the processed_data object. This is the generic
         # label we use within pyEcholab to access data within processed data objects.
         p_data.data = np.array(svf_data)
+
+        if linear:
+            p_data.data = 10**(p_data.data / 10.0)
 
         # Also create an attribute named after the data type that points to our data.
         # Some people think their code is more readable when they use the this label.
@@ -5178,13 +5181,12 @@ class ek80_calibration(calibration):
                 else:
                     # For now we're always converting to pulse compressed Sv/Sp so we return the
                     # effective pulse duration of the pulse compressed Tx signal
-                    return_pc = True
                     param_data = simrad_signal_proc.compute_effective_pulse_duration(raw_data, self,
-                            return_pc=return_pc, return_indices=return_indices)
+                            return_pc=True, return_indices=return_indices)
             else:
                 # EK60 hardware power conversion does not require this parameter
                 param_data = None
-
+                
         elif param_name == 'absorption_coefficient':
             #  compute the absorption coefficient
             param_data = self._compute_absorption(raw_data,

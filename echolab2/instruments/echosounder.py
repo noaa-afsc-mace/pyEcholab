@@ -435,14 +435,15 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None, apply_to
                     for cal in calibrations[chan]: 
                         
                         # get the attribute as a function of frequency
-                        if cal.pulse_form == 0:
-                            current_frequency, current_gain = cal.frequency, getattr(cal,attr)
-                        else:
-                            if attr == 'gain':
-                                attr = 'gain_fm'
-                            current_frequency, current_gain = cal.frequency_fm, getattr(cal,attr)
+                        #if cal.pulse_form == 0:
+                        current_frequency, current_gain = cal.frequency, getattr(cal,attr)
+                        #else:
+                        #    if attr == 'gain':
+                        #        attr = 'gain_fm'
+                        #    current_frequency, current_gain = cal.frequency_fm, getattr(cal,attr)
 
                         # If the frequency/attribute is not an array (CW data), make it an array
+                        
                         if not isinstance(current_frequency,np.ndarray):
                             current_frequency = np.array([current_frequency])
 
@@ -461,7 +462,7 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None, apply_to
 
                     # For each frequency in the new merged frequency array, calculate the mean of the attribute values that exist at that frequency
                     # For the gain and sa_correction attributes, calculate the power mean in dB
-                    if attr in['gain','gain_fm','sa_correction']:
+                    if attr in['gain','sa_correction']:
                         for f in merged_frequency:
                             merged_val = np.append(merged_val,10*np.log10(np.nanmean(10**(np.array(np.where(full_frequencies==f,full_values,np.nan))/10))))
                     else: # For the other attributes, calculate the linear mean
@@ -474,7 +475,7 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None, apply_to
                     merged_cal.__setattr__(attr,merged_val)
                 
                 if len(merged_frequency)>1:
-                    merged_cal.__setattr__('frequency_fm',merged_frequency)
+                    merged_cal.__setattr__('frequency',merged_frequency)
                     
                 # Assign the merged calibration to the channel in the calibrations dictionary
                 calibrations[chan] = merged_cal
@@ -501,7 +502,7 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None, apply_to
     return calibrations
 
 
-def get_Sv(data_object, linear=True, **kwargs):
+def get_Sv(data_object, linear=False, **kwargs):
     '''get_Sv returns a dictionary, keyed by channel ID, containing processed
         data object(s) containing Sv data.
 
@@ -662,7 +663,7 @@ def get_sv(data_object, linear=True, **kwargs):
             Default: False
     '''
 
-    return _get_processed_data(data_object, 'Sv', linear=True, **kwargs)
+    return _get_processed_data(data_object, 'Sv', linear=True,**kwargs)
 
 
 def get_Sp(data_object, linear=True, **kwargs):
@@ -991,15 +992,7 @@ def get_angles(data_object, **kwargs):
 
     return _get_processed_data(data_object, 'angles', **kwargs)
 
-
-def get_Svf(data_object, calibration, **kwargs):
-    '''
-    Calibration is required for Svf.
-    '''
-    
-    return _get_processed_data(data_object, 'Svf', calibration=calibration, **kwargs)
-
-def _get_processed_data(data_object, data_type, calibration=None,
+def _get_processed_data(data_object, data_type, fm_frequency_domain=True, calibration=None,
         frequencies=None, channel_ids=None, heave_correct=False, **kwargs):
     '''_get_processed_data is an internal function that returns a dictionary,
         keyed by channel ID, containing processed_data objects containing the
@@ -1034,18 +1027,18 @@ def _get_processed_data(data_object, data_type, calibration=None,
             else:
                 #  no cal provided - get one using the raw file parameters
                 cal_obj = raw_obj.get_calibration()
-
             #  then get the data
             if data_type == 'Sv':
-                p_data = raw_obj.get_Sv(calibration=cal_obj, **kwargs)
+                if raw_obj.is_fm() & fm_frequency_domain:
+                    p_data = raw_obj.get_Svf(calibration=cal_obj, **kwargs)
+                else:
+                    p_data = raw_obj.get_Sv(calibration=cal_obj, **kwargs)
             elif data_type == 'Sp':
                 p_data = raw_obj.get_Sp(calibration=cal_obj, **kwargs)
             elif data_type == 'power':
                 p_data = raw_obj.get_power(calibration=cal_obj, **kwargs)
             elif data_type == 'angles':
                 p_data = raw_obj.get_physical_angles(calibration=cal_obj, **kwargs)
-            elif data_type == 'Svf':
-               p_data = raw_obj.get_Svf(calibration=cal_obj, **kwargs)
 
             #  add the navigation and motion data - this takes the asynchronous NMEA
             #  and motion data and interpolates it onto the ping time axis and stores

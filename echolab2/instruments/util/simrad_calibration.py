@@ -254,8 +254,15 @@ class calibration(object):
                     # in the correct order.
                     param_data = param
                 else:
-                    # It is an array that is the wrong shape.
-                    raise ValueError("The calibration parameter array " +
+                    # check if it's FM, if so we will get the values at the center frequency
+                    if self.pulse_form == 1:
+                        # check that the calibration parameter is the same length as the frequency
+                        if param.shape[0] == self.frequency.shape[0]:
+                            # Interpolate to the center frequency
+                            param_data = np.full(raw_data.ping_time.shape,np.interp(self.frequency_fc, self.frequency, param))
+                    else:
+                        # It is an array that is the wrong shape.
+                        raise ValueError("The calibration parameter array " +
                             param_name + " is the wrong length.")
             # It is not an array.  Check if it is a scalar int or float.
             elif type(param) in [int, float, np.int32, np.uint32, np.int64, np.float32, np.float64]:
@@ -447,12 +454,15 @@ class calibration(object):
 
         # If we're FM, we're gonna add a _fm to the gain and frequency and provide the mean values for the original attributes
         if self.pulse_form == 1:
-            setattr(self, 'gain_fm', self.gain)
-            setattr(self, 'frequency_fm', self.frequency)
-            setattr(self, 'frequency', (self.frequency_fm[0] + self.frequency_fm[-1]) / 2)
-            setattr(self, 'gain', np.interp(self.frequency, self.frequency_fm,self.gain_fm))
+            setattr(self, 'gain', self.gain)
+            setattr(self, 'frequency', self.frequency)
+            setattr(self, 'frequency_fc', (self.frequency[0] + self.frequency[-1]) / 2)
+            setattr(self, 'gain_fc', np.interp(self.frequency_fc, self.frequency,self.gain))
 
         setattr(self, 'channel_name', root.find('./Calibration/Common/Transceiver/ChannelName').text)
+
+    
+
             
     def get_attribute_from_raw(self, raw_data, param_name, return_indices=None):
         """get_attribute_from_raw gets an individual attribute using the data
@@ -505,7 +515,7 @@ class calibration(object):
             # Extract param from the configuration dictionary
             param_data = self._get_param_data(raw_data.configuration, param_name,
                     return_indices)
-
+        
         elif param_name in self._environment_attributes:
             # Extract param from the environment dictionary
             param_data = self._get_param_data(raw_data.environment, param_name,
