@@ -435,12 +435,7 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None, apply_to
                     for cal in calibrations[chan]: 
                         
                         # get the attribute as a function of frequency
-                        #if cal.pulse_form == 0:
                         current_frequency, current_gain = cal.frequency, getattr(cal,attr)
-                        #else:
-                        #    if attr == 'gain':
-                        #        attr = 'gain_fm'
-                        #    current_frequency, current_gain = cal.frequency_fm, getattr(cal,attr)
 
                         # If the frequency/attribute is not an array (CW data), make it an array
                         
