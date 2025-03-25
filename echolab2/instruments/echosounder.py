@@ -357,7 +357,7 @@ def get_calibration_from_ecs(data_object, ecs_file, channel_map=None, **kwargs):
     return calibrations
 
 
-def get_calibration_from_xml(data_object,xml_files,calibrations = None):
+def get_calibration_from_xml(data_object,xml_files,calibrations = None, apply_to_matching_channels = True):
  
     '''get_calibration_from_xml returns a dictionary, keyed by channel ID,
     containing a calibration object populated with data extracted from the
@@ -378,6 +378,9 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None):
 
     calibration (dict): Provide an already existing calibration dictionary keyed
         by channel ID to append new channels.
+
+    apply_to_matching_channels (bool): Set this to True to apply the calibration
+        to all matching channels, i.e., active to passive.
     
     '''
  
@@ -404,7 +407,8 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None):
         chan  = [s for s in data_object.channel_ids if xml_chan in s][0]
 
         # If the channel pulse form matches the pulse form of the data, add the calibration to the dictionary
-        if cal.pulse_form == data_object.get_channel_data()[chan][0].pulse_form[0]:
+        match = _compare_pulse(data_object.get_channel_data()[chan][0],cal)
+        if match:
             if chan not in calibrations.keys():
                 calibrations[chan] = []
             calibrations[chan].append(cal)
@@ -431,14 +435,10 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None):
                     for cal in calibrations[chan]: 
                         
                         # get the attribute as a function of frequency
-                        if cal.pulse_form == 0:
-                            current_frequency, current_gain = cal.frequency, getattr(cal,attr)
-                        else:
-                            if attr == 'gain':
-                                attr = 'gain_fm'
-                            current_frequency, current_gain = cal.frequency_fm, getattr(cal,attr)
+                        current_frequency, current_gain = cal.frequency, getattr(cal,attr)
 
                         # If the frequency/attribute is not an array (CW data), make it an array
+                        
                         if not isinstance(current_frequency,np.ndarray):
                             current_frequency = np.array([current_frequency])
 
@@ -457,7 +457,7 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None):
 
                     # For each frequency in the new merged frequency array, calculate the mean of the attribute values that exist at that frequency
                     # For the gain and sa_correction attributes, calculate the power mean in dB
-                    if attr in['gain','gain_fm','sa_correction']:
+                    if attr in['gain','sa_correction']:
                         for f in merged_frequency:
                             merged_val = np.append(merged_val,10*np.log10(np.nanmean(10**(np.array(np.where(full_frequencies==f,full_values,np.nan))/10))))
                     else: # For the other attributes, calculate the linear mean
@@ -470,7 +470,7 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None):
                     merged_cal.__setattr__(attr,merged_val)
                 
                 if len(merged_frequency)>1:
-                    merged_cal.__setattr__('frequency_fm',merged_frequency)
+                    merged_cal.__setattr__('frequency',merged_frequency)
                     
                 # Assign the merged calibration to the channel in the calibrations dictionary
                 calibrations[chan] = merged_cal
@@ -478,11 +478,26 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None):
             # If there is only one calibration for the channel, just pull it out of the list
             else:
                 calibrations[chan] = calibrations[chan][0]
+    
+    # If apply_to_matching_channels is set to True, apply the calibration to all matching channels, i.e., active to passive
+    if apply_to_matching_channels:
+        
+        # For each channel still missing a calibration, find the matching channel
+        for chan in [s for s in data_object.channel_ids if s not in calibrations.keys()]:
+            matching_channel = _find_matching_channel(data_object,chan)
+            
+            # If a matching channel is found, apply the calibration to the missing channel
+            if matching_channel is not None:
+                calibrations[chan] = calibrations[matching_channel]
+
+    # Warn if there are channels in the data object that do not have a calibration
+    for chan in  [s for s in data_object.channel_ids if s not in calibrations.keys()]:
+        print('Warning: No calibration found for channel: ',chan)
 
     return calibrations
 
 
-def get_Sv(data_object, linear=True, **kwargs):
+def get_Sv(data_object, linear=False, **kwargs):
     '''get_Sv returns a dictionary, keyed by channel ID, containing processed
         data object(s) containing Sv data.
 
@@ -643,7 +658,7 @@ def get_sv(data_object, linear=True, **kwargs):
             Default: False
     '''
 
-    return _get_processed_data(data_object, 'Sv', linear=True, **kwargs)
+    return _get_processed_data(data_object, 'Sv', linear=True,**kwargs)
 
 
 def get_Sp(data_object, linear=True, **kwargs):
@@ -972,15 +987,7 @@ def get_angles(data_object, **kwargs):
 
     return _get_processed_data(data_object, 'angles', **kwargs)
 
-
-def get_Svf(data_object, calibration, **kwargs):
-    '''
-    Calibration is required for Svf.
-    '''
-    
-    return _get_processed_data(data_object, 'Svf', calibration=calibration, **kwargs)
-
-def _get_processed_data(data_object, data_type, calibration=None,
+def _get_processed_data(data_object, data_type, fm_frequency_domain=True, calibration=None,
         frequencies=None, channel_ids=None, heave_correct=False, **kwargs):
     '''_get_processed_data is an internal function that returns a dictionary,
         keyed by channel ID, containing processed_data objects containing the
@@ -1015,18 +1022,18 @@ def _get_processed_data(data_object, data_type, calibration=None,
             else:
                 #  no cal provided - get one using the raw file parameters
                 cal_obj = raw_obj.get_calibration()
-
             #  then get the data
             if data_type == 'Sv':
-                p_data = raw_obj.get_Sv(calibration=cal_obj, **kwargs)
+                if raw_obj.is_fm() & fm_frequency_domain:
+                    p_data = raw_obj.get_Svf(calibration=cal_obj, **kwargs)
+                else:
+                    p_data = raw_obj.get_Sv(calibration=cal_obj, **kwargs)
             elif data_type == 'Sp':
                 p_data = raw_obj.get_Sp(calibration=cal_obj, **kwargs)
             elif data_type == 'power':
                 p_data = raw_obj.get_power(calibration=cal_obj, **kwargs)
             elif data_type == 'angles':
                 p_data = raw_obj.get_physical_angles(calibration=cal_obj, **kwargs)
-            elif data_type == 'Svf':
-               p_data = raw_obj.get_Svf(calibration=cal_obj, **kwargs)
 
             #  add the navigation and motion data - this takes the asynchronous NMEA
             #  and motion data and interpolates it onto the ping time axis and stores
@@ -1094,7 +1101,7 @@ def _filter_channel(chan, raw_obj, channels, frequencies,data_type):
         return_chan = True
     elif frequencies is None and chan in channels:
         return_chan = True
-    elif raw_obj.configuration[0]['transducer_frequency'] in frequencies and chan in channels:
+    elif chan in channels and raw_obj.configuration[0]['transducer_frequency'] in frequencies:
         return_chan = True
     
     if (data_type=='Svf') and (hasattr(raw_obj,'complex') is False):
@@ -1123,177 +1130,58 @@ def _check_filetype(filename):
     else:
        return -1
 
+def _find_matching_channel(raw_obj,channel_id):
+        '''
+        Simple approach to finding matching channel based on pre-defined attributes. Acts a 
+        a helper function for the get_calibration_from_xml function to find the matching channels
+        via _compare_pulse function.
+        '''
+
+        # Simplest approach, look for the matching transceiver name
+        for ch_id in raw_obj.channel_ids:
+            matching = [s for s in raw_obj.channel_ids if channel_id[:-2] in s and s!=channel_id]
+        
+        # If there are any other channels with matching transciever names, check if the other attributes match
+        if matching:
+            for ch in matching:
+                all_match = _compare_pulse(raw_obj.get_channel_data()[channel_id][0],raw_obj.get_channel_data()[ch][0])
+                
+                # If all attributes match, return the channel
+                if all_match:
+                    return ch                        
+        # If no matching channel is found, return None
+        else:
+            return None
+
+def _compare_pulse(primary_obj,secondary_obj):
+    '''
+    Compares the pulse attributes between two data objects (raw, processed, calibration)
+    and returns True if all attributes match, False if any do not match.
+    
+    primary_obj (object): raw or processed data object
+
+    secondary_obj (object): raw, processed, or calibration data object
+    '''
+
+    # Attrubutes to compare based on pulse form
+    if primary_obj.is_fm():
+        pulse_attrs = ['pulse_form','frequency_end','pulse_duration','transmit_power']
+    else:
+        pulse_attrs = ['pulse_form','frequency','pulse_duration','transmit_power']
+
+    all_match = True # Assume they match until proven otherwise
+    
+    for attr in pulse_attrs:
+        # Check if the attribute exists in both channels
+        if hasattr(secondary_obj,attr):
+            # Check if the attribute values match
+            if np.unique(getattr(primary_obj,attr))[0] != np.unique(getattr(secondary_obj,attr))[0]:
+                all_match = False
+        else:
+            all_match = False
+
+    return all_match
 
 
 class UnknownFormatError(Exception):
     pass
-
-
-
-
-#def get_Sv(data_object, calibration=None, frequencies=None,
-#        channel_ids=None, heave_correct=False, **kwargs):
-#    '''get_Sv returns a dictionary, keyed by channel ID, containing
-#        aprocessed_data objects containing Sv or sv data.
-#
-#        The frequencies and channels keywords can be set to limit what
-#        data is returned. These keywords can be applied together.
-#
-#        frequencies (list): Set this to a list containing the frequencies to
-#            return data from.
-#
-#            Default: None (return all frequencies)
-#
-#        channel_ids (list): Set this to a list containing the channel IDs to
-#            return data from.
-#
-#            Default: None (return all channels)
-#
-#        return_indices (np.array uint32): Set this to a numpy array that contains
-#            the index values to return in the processed data object. This can be
-#            used for more advanced anipulations where start/end ping/time are
-#            inadequate.
-#
-#            Default: None (return all pings)
-#
-#        calibration (EK80.ek80_calibration): Set to an instance of
-#            EK80.ek80_calibration containing the calibration parameters
-#            you want to use when transforming to Sv/sv. If no calibration
-#            object is provided, the values will be extracted from the raw
-#            data.
-#
-#            Default: None
-#
-#        linear (bool): Set to True if getting "sv" data
-#
-#            Default: False
-#
-#        tvg_correction (bool): Set to True to apply TVG range correction.
-#            Typically you want to leave this at True.
-#
-#            Default: True
-#
-#        return_depth (bool): Set to True to return a processed_data object
-#            with a depth axis. When False, the processed_data object has
-#            a range axis.
-#
-#            Default: False
-#
-#        heave_correct (bool): Set to True to return a processed_data object
-#            that has heave correction applied. Heave correction shifts samples
-#            vertically to compensate for the sounder platform's vertical motion.
-#            Heave corrected data is always returned as depth.
-#
-#            Default: False
-#
-#        start_time (datetime64): Set to a numpy datetime64 oject specifying
-#            the start time of the data to convert. All data between the start
-#            and end time will be returned. If set to None, the start time is
-#            the first ping.
-#
-#            Default: None
-#
-#        end_time (datetime64): Set to a numpy datetime64 oject specifying
-#            the end time of the data to convert. All data between the start
-#            and end time will be returned. If set to None, the end time is
-#            the last ping.
-#
-#            Default: None
-#
-#        start_ping (int): Set to an integer specifying the first ping number
-#            to return. All pings between the start and end ping will be
-#            returned. If set to None, the first ping is set as the start ping.
-#
-#            Default: None
-#
-#        end_ping (int): Set to an integer specifying the end ping number
-#            to return. All pings between the start and end ping will be
-#            returned. If set to None, the last ping is set as the end ping.
-#
-#            Default: None
-#
-#    '''
-#
-#    data = {}
-#
-#    #  iterate thru all of the channels
-#    for chan in data_object.raw_data:
-#
-#        #  get a reference to this channel's raw data
-#        raw_obj = data_object.raw_data[chan][0]
-#
-#        #  check if we're returning this channel
-#        return_chan = _filter_channel(chan, raw_obj, channel_ids, frequencies)
-#
-#        # if we are, get all of the data
-#        if return_chan:
-#            #  first, get a calibration object for this channel
-#            if calibration:
-#                if chan in calibration:
-#                    #  one is provided
-#                    cal_obj = calibration[chan]
-#                else:
-#                    #  cal dict provided but this channel not in it - get from raw
-#                    cal_obj = raw_obj.get_calibration(**kwargs)
-#            else:
-#                #  no cal provided - get one using the raw file parameters
-#                cal_obj = raw_obj.get_calibration(**kwargs)
-#
-#            #  then get the data
-#            sv_data = raw_obj.get_Sv(calibration=cal_obj, **kwargs)
-#
-#            #  add the navigation and motion data - this takes the asynchronous NMEA
-#            #  and motion data and interpolates it onto the ping time axis and stores
-#            #  the data in the processed data object.
-#
-#            #  first add the NMEA data - This will add the position, speed, attitude,
-#            #  and distance meta-types (see instruments.util.nmea_data for more info)
-#            sv_data.set_navigation(data_object.nmea_data)
-#
-#            #  then add the motion data - we'll check if we have lat data from the NMEA
-#            #  data and if not, try to get it from the motion data. Some EK80 configurations
-#            #  may only store lat/lon in the motion data and not as NMEA data.
-#            if not hasattr(sv_data, 'latitude'):
-#                #  we didn't get lat/lon from the NMEA data so try to get it from motion data
-#                sv_data.set_motion(data_object.motion_data, motion_attributes=['pitch',
-#                        'roll', 'heave', 'heading', 'latitude', 'longitude'])
-#            else:
-#                #  we have lat (and presumably lon) data so we just get the "regular" motion
-#                #  data (pitch, roll, heave, heading)
-#                sv_data.set_motion(data_object.motion_data)
-#
-#            #  apply heave correction if needed - this has no effect if heave
-#            #  data is not available.
-#            if heave_correct:
-#                sv_data.heave_correct()
-#
-#            #  get the bottom detection data. This method will automatically
-#            #  correct depths as needed if the calibration sound speed is different
-#            #  from the sound speed at the time of collection.
-#            bottom_line = raw_obj.get_bottom(calibration=cal_obj, **kwargs)
-#
-#            if bottom_line is not None:
-#                #  Bottom data is always recorded as depth with heave correction applied,
-#                #  so we need to back out transducer Z offset and/or heave (if applicable)
-#                #  when returning sample data with range as the vertical axis
-#                v_axis = sv_data.get_v_axis()[1]
-#                if v_axis == 'range':
-#                    #  the transducer_draft attribute of the bottom line contains both
-#                    #  the z offset and heave. We simply subtract these values from the
-#                    #  line data to get the line in range.
-#                    bottom_line = bottom_line - bottom_line.transducer_draft
-#                else:
-#                    #  we're returning data as depth. We don't need to back out transducer
-#                    #  z offset, but we have to back out heave correction if the user has
-#                    #  not heave corrected the sample data
-#                    if not heave_correct:
-#                        #  heave correction is not set, subtract heave from the bottom line
-#                        bottom_line = bottom_line - sv_data.heave
-#
-#                #  insert the bottom detection line into the processed data object
-#                sv_data.bottom_line = bottom_line
-#
-#            #  and add the data to our return dict
-#            data[chan] = sv_data
-#
-#    return data

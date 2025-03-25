@@ -160,7 +160,7 @@ def create_ek80_tx(raw_data, calibration, return_pc=False,
         #calibration._y_t = y_t
         calibration._rx_sample_frequency_decimated = rx_sample_frequency_dec
         calibration._pulse_duration = cal_parms['pulse_duration']
-
+        
         return tx_data, tau_eff #, y_t
     else:
         #  return the cached data
@@ -683,7 +683,7 @@ def pulse_compression(raw_data, calibration, return_indices=None, fast=False):
 
         # get the simulated tx signal for these pings
         tx_signal, _ = create_ek80_tx(raw_data, calibration,
-                return_indices=fm_pings, fast=fast)
+                return_indices=fm_pings, return_pc = True, fast=fast)
 
         # create a copy of the data to operate on and return
         p_data = raw_data.complex.copy()
