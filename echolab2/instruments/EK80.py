@@ -3179,12 +3179,12 @@ class raw_data(ping_data):
 
         frequency_resolution : frequency resolution of the output data in Hz
         '''
-        
+
         def compute_absorption_fm(data, f_m):
 
             def alphaFG(c, pH, T, D, S,f): # requires sound speed (m/s), pH, temp(C), depth(m), salinity(ppt), and nominal frequency(kHz)
                     # Attenuation Coefficient is based on Francois and Garrison, 1982 - "Sound absorption based on ocean measurements.
-                    # Boric Acid Contribution, P1 = 1. This is buried in echolab.simrad_calibration and I can't figure out how to apply to the 
+                    # Boric Acid Contribution, P1 = 1. This is buried in echolab.simrad_calibration and I can't figure out how to apply to the
                     # full range of frequencies and not the nominal frequency parameter in the raw data
                     A1=((8.86/c)*(10**(0.78*pH-5)))
                     f1=((2.8*((S/35)**0.5))*(10**(4-(1245/(T+273)))))
@@ -3206,7 +3206,7 @@ class raw_data(ping_data):
             alpha_fm = np.array([alphaFG(env['sound_speed'],env['acidity'],env['temperature'],env['depth'],env['salinity'],nomf/1000)/1000 for nomf in f_m])
 
             return alpha_fm
-        
+
         def compute_psi_fm(psi_f_n, f_n, f_m):
             """
             Calculate psi at given frequency.
@@ -3219,14 +3219,14 @@ class raw_data(ping_data):
                     Nominal frequency [Hz]
             f_m : float
                     Frequency to calculate psi at [Hz]
-                    
+
             Returns
             -------
-            float 
+            float
                     Psi at frequency `f_m` [sr]
             """
             return psi_f_n * (f_n / f_m) ** 2
-        
+
         def get_range_vector(data):
             """
             get_range_vector returns a non-corrected range vector.
@@ -3238,7 +3238,7 @@ class raw_data(ping_data):
             range[0] = 1e-20
 
             return range
-        
+
         if frequency_resolution is None:
             setattr(calibration, 'frequency_fft', calibration.frequency)
             setattr(calibration, 'gain_fft', calibration.gain)
@@ -3246,7 +3246,7 @@ class raw_data(ping_data):
             setattr(calibration, 'frequency_fft', np.arange(calibration.frequency_start,calibration.frequency_end+1,frequency_resolution))
             setattr(calibration,'gain_fft',np.interp(np.arange(calibration.frequency_start, calibration.frequency_end+1, frequency_resolution),
                                             calibration.frequency,calibration.gain))
-        
+
                 # Get the sector averaged complex data
         p_data, return_indices = self._get_complex(calibration=calibration,
                 return_depth=False, clear_cache=False, linear=True)
@@ -3258,7 +3258,7 @@ class raw_data(ping_data):
 
         w_tilde_i, N_w, t_w, t_w_n = simrad_signal_proc.calc_hanning_window(self,
                 calibration, return_indices=return_indices)
-        
+
         alpha_m = compute_absorption_fm(self,calibration.frequency_fft)
 
         f_nom =calibration.get_parameter(self, 'transducer_frequency', 0)
@@ -3266,17 +3266,17 @@ class raw_data(ping_data):
         lambda_m =   1470 /  calibration.frequency_fft#cal_objects_xml[chan].sound_speed /  cal_objects_xml[chan].frequency
         g_m = 10**(calibration.gain_fft/10)
         svf_data = []
-        
+
         y_pc_nu = simrad_signal_proc.pulse_compression(self,calibration=calibration)
         y_pc_n = np.mean(y_pc_nu,axis=2)
-        r_n = get_range_vector(self)  
+        r_n = get_range_vector(self)
         y_pc_s_n = simrad_signal_proc.calcPulseCompSphericalSpread(y_pc_n, r_n)
 
         for ping_no in return_indices:
             y_mf_auto_n =  simrad_signal_proc.calcAutoCorrelation(tx_data[ping_no])
 
             y_mf_auto_n =  simrad_signal_proc.calcAutoCorrelation(tx_data[ping_no])
-            
+
             Y_pc_v_m_n, Y_mf_auto_m, Y_tilde_pc_v_m_n, svf_range = simrad_signal_proc.calc_DFT_for_Sv(calibration,
                 y_pc_s_n[ping_no], w_tilde_i[ping_no], y_mf_auto_n, N_w[ping_no], r_n, step=min(range(len(r_n)), key=lambda i: abs(r_n[i]-step))+1)
 
@@ -5186,7 +5186,7 @@ class ek80_calibration(calibration):
             else:
                 # EK60 hardware power conversion does not require this parameter
                 param_data = None
-                
+
         elif param_name == 'absorption_coefficient':
             #  compute the absorption coefficient
             param_data = self._compute_absorption(raw_data,

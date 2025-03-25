@@ -130,7 +130,7 @@ class processed_data(ping_data):
         self.is_heave_corrected = False
 
         # The sound velocity used when applying calibrations
-        self.sound_velocity = None
+        self.sound_speed = None
 
         # Sample thickness is the vertical extent of the samples in meters.  It
         # is calculated as thickness = sample interval(s)*sound speed(m/s) / 2.
@@ -155,7 +155,8 @@ class processed_data(ping_data):
         #  create a list that stores the scalar object attributes
         self._object_attributes += ['sample_thickness',
                                     'sample_offset',
-                                    'sound_velocity',
+                                    'sample_interval',
+                                    'sound_speed',
                                     #'frequency',
                                     #'data_type',
                                     'is_log',
