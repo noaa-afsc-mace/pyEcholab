@@ -3082,7 +3082,7 @@ class raw_data(ping_data):
             thickness = sample_interval * sound_speed / 2.0
             # Calculate the range vector.
             range = (np.arange(0, num_samples) + sample_offset) * thickness
-            #range = (np.arange(-1, num_samples-1) + sample_offset) * thickness
+            range[0] = 1e-20
 
             return range
 
@@ -3299,7 +3299,7 @@ class raw_data(ping_data):
             c_range -= (2.0 * power_data.sample_thickness)
 
             #  zero out negative ranges
-            c_range[c_range < 0] = 0
+            c_range[c_range <= 0] = 1e-20
 
         # Calculate time varied gain.
         tvg = c_range.copy()

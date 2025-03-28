@@ -1,9 +1,7 @@
 numpy
 matplotlib
-jupyter
-notebook
 pytz
 future
-PyQT5
+pyqt6
 basemap
 cartopy

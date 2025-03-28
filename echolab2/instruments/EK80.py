@@ -4633,7 +4633,7 @@ class raw_data(ping_data):
                 c_range -= (power_data.sound_speed * cal_parms['pulse_duration'] / 4.0)[:,np.newaxis]
 
             #  zero out negative ranges
-            c_range[c_range < 0] = 1e-20
+            c_range[c_range <= 0] = 1e-20
 
         # Calculate time varied gain.
         tvg = c_range.copy()
