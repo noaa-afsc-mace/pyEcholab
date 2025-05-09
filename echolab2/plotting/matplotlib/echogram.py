@@ -74,7 +74,7 @@ class Echogram(object):
     """
 
     def __init__(self, mpl_container, data_object, data_attribute=None,
-                 threshold=None, cmap=None):
+                 threshold=None, cmap=None, frequency=None):
         """Initializes the Echogram class.
 
         Args:
@@ -122,9 +122,12 @@ class Echogram(object):
         else:
             self.data_attribute = data_object.data
         
-        # If we're working with FM data, power average across the band 
+        # If we're working with FM data, power average across the band is no frequency is provided
         if len(np.unique(self.data_object.frequency)) > 1: 
-            self.data_attribute = 10*np.log10(np.nanmean(10**(self.data_attribute/10),axis=2))
+            if frequency is not None:
+                self.data_attribute = self.data_attribute[(np.abs(self.data_object.frequency - frequency)).argmin()]
+            else:
+                self.data_attribute = 10*np.log10(np.nanmean(10**(self.data_attribute/10),axis=0))
 
         # Store the display thresholds.
         self.threshold = threshold

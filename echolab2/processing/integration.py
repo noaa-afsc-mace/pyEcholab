@@ -78,7 +78,7 @@ class results(object):
         grid_shape = (grid.n_intervals, grid.n_layers)
         if grid.grid_data:
             if grid.grid_data.data.ndim > 2:
-                grid_shape = (grid.n_intervals, grid.n_layers,grid.grid_data.data.shape[-1])
+                grid_shape = (grid.grid_data.data.shape[0], grid.n_intervals, grid.n_layers)
         
         self.mean_Sv = np.full(grid_shape, np.nan)
         self.nasc = np.full(grid_shape, np.nan)
@@ -299,7 +299,7 @@ class integrator(object):
         """
         integrate ...
         """
-
+        
         # Generate the threshold mask if we're supposed to. It is assumed that
         # the specified thresholds are in the same units as the provided data.
         threshold_mask = None
@@ -337,132 +337,160 @@ class integrator(object):
         else:
             p_data_is_log = False
         
-        # using the provided grid, integrate by interval and layer
-        for interval in range(integration_grid.n_intervals):
+
+        is_3d = len(integration_grid.grid_data.data.shape) > 2
+        f_range = range(integration_grid.grid_data.data.shape[0]) if is_3d else [None]
+
+        for f in f_range:
+            # using the provided grid, integrate by interval and layer
             
-            # determine the vertical extent of the integration. This allows us to skip 
-            # integrating cells that are entirely above/below the exclude lines.
-            ping_map = integration_grid.ping_interval_map == interval
-            if exclude_above_line is not None:
-                min_exclude_above = np.nanmin(exclude_above_line.data[ping_map])
-                integration_layer_start = np.searchsorted(integration_grid.layer_edges,
-                        min_exclude_above, side="left")
-                if integration_layer_start > 0:
-                    integration_layer_start -= 1
-            else:
-                integration_layer_start = 0
-            if exclude_below_line is not None:
-                max_exclude_below = np.nanmax(exclude_below_line.data[ping_map])
-                integration_layer_end = np.searchsorted(integration_grid.layer_edges,
-                        max_exclude_below, side="right")
-                # this currently might include an extra layer?
-            else:
-                integration_layer_end = integration_grid.n_layers
+            for interval in range(integration_grid.n_intervals):
+                
+                # determine the vertical extent of the integration. This allows us to skip 
+                # integrating cells that are entirely above/below the exclude lines.
+                ping_map = integration_grid.ping_interval_map == interval
+                if exclude_above_line is not None:
+                    min_exclude_above = np.nanmin(exclude_above_line.data[ping_map])
+                    integration_layer_start = np.searchsorted(integration_grid.layer_edges,
+                            min_exclude_above, side="left")
+                    if integration_layer_start > 0:
+                        integration_layer_start -= 1
+                else:
+                    integration_layer_start = 0
+                if exclude_below_line is not None:
+                    max_exclude_below = np.nanmax(exclude_below_line.data[ping_map])
+                    integration_layer_end = np.searchsorted(integration_grid.layer_edges,
+                            max_exclude_below, side="right")
+                    # this currently might include an extra layer?
+                else:
+                    integration_layer_end = integration_grid.n_layers
+                
+                # work thru the layers for this interval
+                for layer in range(integration_layer_start, integration_layer_end):
+
+                    # get a mask that we can use to return sample data for this cell.
+                    cell_mask = integration_grid.get_cell_mask(interval, layer)
+
+                    # use the mask to get the cell data
+                    if is_3d:
+                        cell_data = p_data[f][cell_mask]
+                    else:
+                        cell_data = p_data[cell_mask]
+
+                    # and again to get the included data mask for this cell
+                    cell_include = inclusion_mask[cell_mask]
+                    
+                    # check if the user provided a no data mask and apply
+                    if no_data_mask is not None:
+                        # yes, get the no data samples and set to nan
+                        cell_bad = no_data_mask[cell_mask]
+                        cell_data[cell_bad] = np.nan 
+                    
+                    #  apply the threshold mask if specified
+                    if threshold_mask is not None:
+                        # When applying threshold masks for integration, you want the samples
+                        # to be included in the layer thickness calculation so we will just 
+                        # set these samples to a tiny number
+                        cell_zero = threshold_mask[cell_mask]
+                        if p_data.is_log:
+                            cell_data[cell_zero] = -999
+                        else:
+                            cell_data[cell_zero] = 1e-100
+
+                    # now get some info our our cell and cell sample data
+                    no_data_samples = np.isnan(cell_data)
+                    n_no_data_samples = np.count_nonzero(no_data_samples)
+                    n_included_samples = np.count_nonzero(cell_include)
+                    n_excluded_samples = np.count_nonzero(~cell_include)
+                    n_pings_in_cell  = integration_grid.interval_pings[interval]
+                    n_samples = integration_grid.layer_samples[layer]
+                    total_samples = n_samples * n_pings_in_cell
+                    
+                    # compute effective height of layer by calculating the fraction of the cell
+                    # that has been excluded and pro-rating the height. Bad data are excluded
+                    # from the total number of samples.
+                    cell_thickness = (p_data.sample_thickness * n_samples) * (n_included_samples / 
+                            (total_samples - n_no_data_samples))
+                    
+                    #cell_thickness = integration_grid.layer_thickness * (n_included_samples / 
+                    #        (total_samples - n_no_data_samples))  
+                            
+                    # get the data we're integrating
+                    cell_data_included = cell_data[cell_include]
+                    
+                    #  Now compute the mean and some other bits
+                    if np.nansum(cell_data_included) > 0:
+                        cell_mean_sv = np.nanmean(cell_data_included,axis=0)
+                        cell_min_sv = np.nanmin(cell_data_included,axis=0)
+                        cell_max_sv = np.nanmax(cell_data_included,axis=0)
+                        if cell_mean_sv.any() > 1e-100:
+                            cell_mean_Sv = 10.0 * np.log10(cell_mean_sv)
+                            cell_max_Sv = 10.0 * np.log10(cell_max_sv)
+                            cell_nasc = cell_mean_sv * cell_thickness * 4 * np.pi * 1852**2
+                        else:
+                            cell_mean_Sv = -999
+                            cell_max_Sv = -999
+                            cell_nasc= 0
+                        if cell_min_sv.any() > 1e-100:
+                            cell_min_Sv = 10.0 * np.log10(cell_min_sv)
+                        else:
+                            cell_min_Sv = -999
             
-            # work thru the layers for this interval
-            for layer in range(integration_layer_start, integration_layer_end):
-
-                # get a mask that we can use to return sample data for this cell.
-                cell_mask = integration_grid.get_cell_mask(interval, layer)
-
-                # use the mask to get the cell data
-                cell_data = p_data[cell_mask]
-
-                # and again to get the included data mask for this cell
-                cell_include = inclusion_mask[cell_mask]
-                
-                # check if the user provided a no data mask and apply
-                if no_data_mask is not None:
-                    # yes, get the no data samples and set to nan
-                    cell_bad = no_data_mask[cell_mask]
-                    cell_data[cell_bad] = np.nan 
-                
-                #  apply the threshold mask if specified
-                if threshold_mask is not None:
-                    # When applying threshold masks for integration, you want the samples
-                    # to be included in the layer thickness calculation so we will just 
-                    # set these samples to a tiny number
-                    cell_zero = threshold_mask[cell_mask]
-                    if p_data.is_log:
-                        cell_data[cell_zero] = -999
-                    else:
-                        cell_data[cell_zero] = 1e-100
-
-                # now get some info our our cell and cell sample data
-                no_data_samples = np.isnan(cell_data)
-                n_no_data_samples = np.count_nonzero(no_data_samples)
-                n_included_samples = np.count_nonzero(cell_include)
-                n_excluded_samples = np.count_nonzero(~cell_include)
-                n_pings_in_cell  = integration_grid.interval_pings[interval]
-                n_samples = integration_grid.layer_samples[layer]
-                total_samples = n_samples * n_pings_in_cell
-                
-                # compute effective height of layer by calculating the fraction of the cell
-                # that has been excluded and pro-rating the height. Bad data are excluded
-                # from the total number of samples.
-                cell_thickness = (p_data.sample_thickness * n_samples) * (n_included_samples / 
-                        (total_samples - n_no_data_samples))
-                
-                #cell_thickness = integration_grid.layer_thickness * (n_included_samples / 
-                #        (total_samples - n_no_data_samples))  
-                        
-                # get the data we're integrating
-                cell_data_included = cell_data[cell_include]
-                
-                #  Now compute the mean and some other bits
-                if np.nansum(cell_data_included) > 0:
-                    cell_mean_sv = np.nanmean(cell_data_included,axis=0)
-                    cell_min_sv = np.nanmin(cell_data_included,axis=0)
-                    cell_max_sv = np.nanmax(cell_data_included,axis=0)
-                    if cell_mean_sv.any() > 1e-100:
-                        cell_mean_Sv = 10.0 * np.log10(cell_mean_sv)
-                        cell_max_Sv = 10.0 * np.log10(cell_max_sv)
-                        cell_nasc = cell_mean_sv * cell_thickness * 4 * np.pi * 1852**2
-                    else:
+                    # if no data in cell, make it a nan
+                    elif cell_data_included.size == 0:
+                        cell_mean_Sv = np.nan
+                        cell_min_Sv = np.nan
+                        cell_max_Sv = np.nan
+                        cell_nasc = np.nan
+                    
+                    else: # if any samples present report as zero
                         cell_mean_Sv = -999
+                        cell_min_Sv = -999
                         cell_max_Sv = -999
                         cell_nasc= 0
-                    if cell_min_sv.any() > 1e-100:
-                        cell_min_Sv = 10.0 * np.log10(cell_min_sv)
-                    else:
-                        cell_min_Sv = -999
-           
-                # if no data in cell, make it a nan
-                elif cell_data_included.size == 0:
-                    cell_mean_Sv = np.nan
-                    cell_min_Sv = np.nan
-                    cell_max_Sv = np.nan
-                    cell_nasc = np.nan
-                
-                else: # if any samples present report as zero
-                    cell_mean_Sv = -999
-                    cell_min_Sv = -999
-                    cell_max_Sv = -999
-                    cell_nasc= 0
 
-                #  insert the results into the results object
-                int_results.mean_Sv[interval, layer] = cell_mean_Sv
-                int_results.nasc[interval, layer] = cell_nasc
-                int_results.min_Sv[interval, layer] = cell_min_Sv
-                int_results.max_Sv[interval, layer] = cell_max_Sv
-                int_results.no_data_samples[interval, layer] = n_no_data_samples
-                int_results.good_samples[interval, layer] = n_included_samples
-                int_results.excluded_samples[interval, layer] = n_excluded_samples
-                int_results.total_samples[interval, layer] = total_samples
-                int_results.min_sv_threshold_applied[interval, layer] = self.min_threshold_applied
-                int_results.max_sv_threshold_applied[interval, layer] = self.max_threshold_applied
-                int_results.mean_height[interval, layer] = cell_thickness
-                
-                if exclude_above_line is not None:
-                    line_int_mask = np.logical_and(exclude_above_line.ping_time >= integration_grid.time_start[interval],
-                            exclude_above_line.ping_time < integration_grid.time_end[interval])
-                    int_results.exclude_above_line_mean[interval, layer] = \
-                            np.nanmean(exclude_above_line.data[line_int_mask])
-                if exclude_below_line is not None:
-                    line_int_mask = np.logical_and(exclude_below_line.ping_time >= integration_grid.time_start[interval],
-                            exclude_below_line.ping_time < integration_grid.time_end[interval])
-                    int_results.exclude_below_line_mean[interval, layer] = \
-                            np.nanmean(exclude_below_line.data[line_int_mask])
+                    #  insert the results into the results object
+                    if is_3d:
+                        int_results.mean_Sv[f, interval, layer] = cell_mean_Sv
+                        int_results.nasc[f, interval, layer] = cell_nasc
+                        int_results.min_Sv[f, interval, layer] = cell_min_Sv
+                        int_results.max_Sv[f, interval, layer] = cell_max_Sv
+                        int_results.no_data_samples[f, interval, layer] = n_no_data_samples
+                        int_results.good_samples[f, interval, layer] = n_included_samples
+                        int_results.excluded_samples[f, interval, layer] = n_excluded_samples
+                        int_results.total_samples[f, interval, layer] = total_samples
+                        int_results.min_sv_threshold_applied[f, interval, layer] = self.min_threshold_applied
+                        int_results.max_sv_threshold_applied[f, interval, layer] = self.max_threshold_applied
+                        int_results.mean_height[f, interval, layer] = cell_thickness
+                    else:
+                        int_results.mean_Sv[interval, layer] = cell_mean_Sv
+                        int_results.nasc[interval, layer] = cell_nasc
+                        int_results.min_Sv[interval, layer] = cell_min_Sv
+                        int_results.max_Sv[interval, layer] = cell_max_Sv
+                        int_results.no_data_samples[interval, layer] = n_no_data_samples
+                        int_results.good_samples[interval, layer] = n_included_samples
+                        int_results.excluded_samples[interval, layer] = n_excluded_samples
+                        int_results.total_samples[interval, layer] = total_samples
+                        int_results.min_sv_threshold_applied[interval, layer] = self.min_threshold_applied
+                        int_results.max_sv_threshold_applied[interval, layer] = self.max_threshold_applied
+                        int_results.mean_height[interval, layer] = cell_thickness
+                    
+                    if exclude_above_line is not None:
+                        line_int_mask = np.logical_and(exclude_above_line.ping_time >= integration_grid.time_start[interval],
+                                exclude_above_line.ping_time < integration_grid.time_end[interval])
+                        if is_3d:
+                            int_results.exclude_above_line_mean[f, interval, layer] = np.nanmean(exclude_above_line.data[line_int_mask])
+                        else:
+                            int_results.exclude_above_line_mean[interval, layer] = np.nanmean(exclude_above_line.data[line_int_mask])
+                                                
+                    
+                    if exclude_below_line is not None:
+                        line_int_mask = np.logical_and(exclude_below_line.ping_time >= integration_grid.time_start[interval],
+                                exclude_below_line.ping_time < integration_grid.time_end[interval])
+                        if is_3d:
+                            int_results.exclude_below_line_mean[f, interval, layer] = np.nanmean(exclude_below_line.data[line_int_mask])
+                        else:
+                            int_results.exclude_below_line_mean[interval, layer] = np.nanmean(exclude_below_line.data[line_int_mask])
         
         #  convert back to log if required
         if p_data_is_log:
