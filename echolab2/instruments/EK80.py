@@ -3173,11 +3173,15 @@ class raw_data(ping_data):
         return p_data, return_indices
 
 
-    def get_Svf(self, calibration, step=0.5, linear=False, frequency_resolution=None):
+    def get_Svf(self, calibration, step=0.5, linear=False, frequency_resolution=None, analysis_band=.9):
         '''
         step: vertical window step in meters. Default is 0.5 m
 
         frequency_resolution : frequency resolution of the output data in Hz
+        
+        analysis_band: If 1 value is provided, it will be the percentile of the bandwidth
+        to be used for the analysis. If 2 values are provided, it will be the min and max. Default is .9, 
+        corresponding to removal of the lower and upper 5% of the bandwidth.
         '''
 
         def compute_absorption_fm(data, f_m):
@@ -3247,9 +3251,24 @@ class raw_data(ping_data):
             setattr(calibration,'gain_fft',np.interp(np.arange(calibration.frequency_start, calibration.frequency_end+1, frequency_resolution),
                                             calibration.frequency,calibration.gain))
 
+        if analysis_band is not None:
+            if isinstance(analysis_band, (int, float)):
+                min_fft = ((calibration.frequency[-1]+calibration.frequency[0])/2)-(calibration.frequency[-1]-calibration.frequency[0])*(analysis_band/2)
+                max_fft = ((calibration.frequency[-1]+calibration.frequency[0])/2)+(calibration.frequency[-1]-calibration.frequency[0])*(analysis_band/2)
+            elif isinstance(analysis_band, tuple):
+                min_fft = analysis_band[0]
+                max_fft = analysis_band[1]
+
+            setattr(calibration, 'frequency_fft', calibration.frequency_fft[np.where((calibration.frequency_fft>min_fft)&(calibration.frequency_fft<max_fft))[0]])
+            setattr(calibration, 'gain_fft',calibration.gain_fft[np.where((calibration.frequency_fft>min_fft)&(calibration.frequency_fft<max_fft))[0]])
+
                 # Get the sector averaged complex data
         p_data, return_indices = self._get_complex(calibration=calibration,
                 return_depth=False, clear_cache=False, linear=True)
+
+        attribute_name = 'Sv'
+        p_data.is_log = True
+        p_data.data_type = attribute_name
 
         # get the tx signal properties - these were created and cached when
         # _get_complex() was called above.
@@ -3288,17 +3307,18 @@ class raw_data(ping_data):
 
         # Set the data attribute in the processed_data object. This is the generic
         # label we use within pyEcholab to access data within processed data objects.
-        p_data.data = np.array(svf_data)
+        p_data.data = np.transpose(np.array(svf_data),(2,0,1))
 
         if linear:
             p_data.data = 10**(p_data.data / 10.0)
+            p_data.is_log = False
 
         # Also create an attribute named after the data type that points to our data.
         # Some people think their code is more readable when they use the this label.
         setattr(p_data, 'n_samples', len(Sv_m_n))
         setattr(p_data, 'sample_thickness', svf_range[1]-svf_range[0])
         setattr(p_data, 'range', svf_range)
-        p_data.add_data_attribute('Svf', p_data.data)
+        #p_data.add_data_attribute('Svf', p_data.data)
         p_data.is_log = True
         setattr(p_data, 'frequency', calibration.frequency_fft)
 
