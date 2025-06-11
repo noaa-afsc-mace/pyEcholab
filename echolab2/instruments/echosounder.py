@@ -1081,7 +1081,8 @@ def _get_processed_data(data_object, data_type, fm_frequency_domain=True, calibr
                     #  not heave corrected the sample data
                     if not heave_correct:
                         #  heave correction is not set, subtract heave from the bottom line
-                        bottom_line = bottom_line - p_data.heave
+                        if hasattr(p_data,'heave'):
+                            bottom_line = bottom_line - p_data.heave
 
                 #  insert the bottom detection line into the processed data object
                 p_data.bottom_line = bottom_line
@@ -1130,22 +1131,29 @@ def _check_filetype(filename):
     else:
        return -1
 
-def _find_matching_channel(raw_obj,channel_id):
+def _find_matching_channel(data_obj,channel_id): # update to deal with either raw or processed objects, .data_type
         '''
         Simple approach to finding matching channel based on pre-defined attributes. Acts a 
         a helper function for the get_calibration_from_xml function to find the matching channels
         via _compare_pulse function.
         '''
 
-        # Simplest approach, look for the matching transceiver name
-        for ch_id in raw_obj.channel_ids:
-            matching = [s for s in raw_obj.channel_ids if channel_id[:-2] in s and s!=channel_id]
-        
+        if isinstance(data_obj, dict): # we're working with a processed data dictionary
+            matching = [s for s in data_obj.keys() if channel_id[:-2] in s and s!=channel_id]
+            obj_type = 'processed'
+        elif hasattr(data_obj,'raw_data'): # raw EK data object
+            matching = [s for s in data_obj.channel_ids if channel_id[:-2] in s and s!=channel_id]
+            obj_type = 'raw'
+        else:
+            raise UnknownFormatError('Unknown data object format. Expected a raw or processed data dictionary.')
+
         # If there are any other channels with matching transciever names, check if the other attributes match
         if matching:
             for ch in matching:
-                all_match = _compare_pulse(raw_obj.get_channel_data()[channel_id][0],raw_obj.get_channel_data()[ch][0])
-                
+                if obj_type == 'processed':
+                    all_match = _compare_pulse(data_obj[channel_id],data_obj[ch],raw=False)
+                elif obj_type == 'raw':
+                    all_match = _compare_pulse(data_obj.get_channel_data()[channel_id][0],data_obj.get_channel_data()[ch][0])
                 # If all attributes match, return the channel
                 if all_match:
                     return ch                        
@@ -1153,7 +1161,7 @@ def _find_matching_channel(raw_obj,channel_id):
         else:
             return None
 
-def _compare_pulse(primary_obj,secondary_obj):
+def _compare_pulse(primary_obj,secondary_obj, raw=True):
     '''
     Compares the pulse attributes between two data objects (raw, processed, calibration)
     and returns True if all attributes match, False if any do not match.
@@ -1164,22 +1172,33 @@ def _compare_pulse(primary_obj,secondary_obj):
     '''
 
     # Attrubutes to compare based on pulse form
-    if primary_obj.is_fm():
-        pulse_attrs = ['pulse_form','frequency_end','pulse_duration','transmit_power']
-    else:
-        pulse_attrs = ['pulse_form','frequency','pulse_duration','transmit_power']
+    all_match = True
 
-    all_match = True # Assume they match until proven otherwise
-    
-    for attr in pulse_attrs:
-        # Check if the attribute exists in both channels
-        if hasattr(secondary_obj,attr):
-            # Check if the attribute values match
-            if np.unique(getattr(primary_obj,attr))[0] != np.unique(getattr(secondary_obj,attr))[0]:
-                all_match = False
+    if raw:
+        if primary_obj.is_fm():
+            pulse_attrs = ['pulse_form','frequency_end','pulse_duration','transmit_power']
         else:
-            all_match = False
+            pulse_attrs = ['pulse_form','frequency','pulse_duration','transmit_power']
 
+         # Assume they match until proven otherwise
+        
+        for attr in pulse_attrs:
+            # Check if the attribute exists in both channels
+            if hasattr(secondary_obj,attr):
+                # Check if the attribute values match
+                if np.unique(getattr(primary_obj,attr))[0] != np.unique(getattr(secondary_obj,attr))[0]:
+                    all_match = False
+            else:
+                all_match = False
+    else:
+        if primary_obj.frequency.all() != secondary_obj.frequency.all():
+            all_match = False
+        else:
+            # If we're comparing processed data objects, we can compare the pulse attributes directly
+            pulse_attrs = ['pulse_form','pulse_duration','transmit_power']
+            for attr in pulse_attrs:
+                if np.unique(primary_obj.cal_parms[attr])[0] !=np.unique(secondary_obj.cal_parms[attr])[0]:
+                    all_match = False
     return all_match
 
 
