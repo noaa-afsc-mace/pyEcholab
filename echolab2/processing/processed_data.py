@@ -1271,7 +1271,13 @@ class processed_data(ping_data):
             other_data = value
 
         # Set the sample data to the provided value(s).
-        self.data[sample_mask] = other_data
+        
+        #For 3D array (FM), we need to assign to each frequency separately.
+        if len(self.data.shape)==3: 
+            for i in range(self.data.shape[0]):
+                self.data[i][sample_mask] = other_data
+        else:
+            self.data[sample_mask] = other_data
 
 
     def __iter__(self):
@@ -1980,6 +1986,222 @@ class processed_data(ping_data):
             msg = msg + "  processed_data object contains no data\n"
 
         return msg
+
+
+    def to_power(self, linear=False):
+        """Converts a Sv processed data object to power
+
+        Args:
+            self (processed_data): A processed_data object with Sv data.
+            return_indices (array): A numpy array of indices to return.
+            linear (bool):  Set to True to return linear values (sv).
+
+        Returns:
+            Processed data object with 
+        """
+
+        if 'sv' not in self.data_type.lower():
+            raise ValueError("to_power can only be used on processed_data "
+                                "objects with Sv/sv data. This object has data_type: "
+                                + self.data_type)
+        if self.data_type == 'sv':
+            #  convert sv to Sv
+            self.data = 10.0 * np.log10(self.data)
+
+        depth=False
+        # Get the range for TVG calculation.  The method used depends on the
+        # hardware used to collect the data.
+        if len(np.unique(self.frequency)) > 1: 
+            c_range = np.zeros(self.data.shape[1:3], dtype=self.sample_dtype)
+        else:
+            c_range = np.zeros(self.shape[0:2], dtype=self.sample_dtype)
+        if not hasattr(self, 'range'):
+            depth = True
+            self.to_range()
+        c_range += self.range
+
+        obj_new = self.copy()
+
+        if len(np.unique(self.frequency)) > 1: # We've got FM
+            for i, freq in enumerate(self.frequency):
+                # get the current cal_parms for this frequency
+                cur_cal_parms =self.cal_parms.copy()
+                for key in cur_cal_parms:
+                    if isinstance(cur_cal_parms[key], np.ndarray):
+                        if len(cur_cal_parms[key]) == len(self.frequency):
+                            cur_cal_parms[key] = cur_cal_parms[key][i]
+                obj_new.data[i] = self._to_power(obj_new.data[i], cur_cal_parms, freq, c_range)
+        else:
+            cur_cal_parms = self.cal_parms.copy()
+            obj_new.data = self._to_power(obj_new.data, cur_cal_parms, self.frequency, c_range)
+
+        # Check if we're returning linear or log values.
+        if linear:
+            # Convert to linear units.
+            obj_new.data[:] = 10 ** (obj_new.data / 10.0)
+
+        if depth is True:
+            print(depth)
+            # Convert range back to depth
+            obj_new.to_depth()
+
+        obj_new.data_type='power'
+        return obj_new
+
+
+    def _to_power(self, data, cal_parms,frequency, c_range, FM=False):
+            effective_pulse_duration = cal_parms['effective_pulse_duration']
+
+            #  convert transceiver gain to linear units
+            transceiver_gain = 10**(cal_parms['gain'] / 10)
+
+            # Calculate the system gains.
+            wavelength = cal_parms['sound_speed'] / frequency
+            gains = 10 * np.log10((cal_parms['transmit_power'] * transceiver_gain**2 *
+                wavelength**2 * cal_parms['sound_speed'] * effective_pulse_duration *
+                10**(cal_parms['equivalent_beam_angle']/10.0)) / (32 * np.pi**2))
+
+            if cal_parms['transceiver_type'] == 'GPT':
+                # For the Ex60 hardware, the corrected range is computed as:
+                #   c_range = range - (2 * sample_thickness)
+                c_range -= (2.0 * self.sample_thickness)
+            else:
+                # For the Ex80 WBT style hardware corrected range is computed as:
+                #    c_range = range - (sound speed * transmitted pulse length / 4)
+                #c_range -= (power_data.sound_speed * cal_parms['pulse_duration'] / 4.0)[:,np.newaxis]
+                c_range -= (cal_parms['sound_speed'] * cal_parms['pulse_duration'] / 4.0)
+
+                #  zero out negative and zero ranges
+                c_range[c_range <= 0] = 1e-20 
+
+            # Calculate time varied gain.
+            tvg = c_range.copy()
+
+            tvg = 20.0 * np.log10(tvg)
+            
+            data -= (2.0 * cal_parms['absorption_coefficient']) * c_range
+            data -= tvg
+            data += gains
+
+            # Only apply to CW data
+            if cal_parms['pulse_form'].all() == 0:
+                data+= (2.0 * cal_parms['sa_correction'])
+            elif cal_parms['pulse_form'].any() == 0:
+                not_fm = cal_parms['pulse_form'] == 0
+                data[not_fm,:]+= (2.0 * cal_parms['sa_correction'])[not_fm, np.newaxis]
+
+            return data
+        
+    def to_Sv(self, linear=False,tvg_correction=True):
+        """Converts a power processed data object to Sv
+
+        Args:
+            power_data (processed_data): A processed_data object with the raw power
+                data read from the file.
+            calibration (calibration object): The data calibration object where
+                calibration data will be retrieved.
+            linear (bool):  Set to True to return linear values.
+            tvg_correction (bool): Set to True to apply a correction to the
+                range of (2 * sample thickness) for GPTs and
+                (sound speed * transmitted pulse length / 4) for WBTs.
+
+        Returns:
+            Processed data object with 
+        """
+
+        depth=False
+        # Get the range for TVG calculation.  The method used depends on the
+        # hardware used to collect the data.
+
+        if len(np.unique(self.frequency)) > 1: 
+            c_range = np.zeros(self.data.shape[1:3], dtype=self.sample_dtype)
+        else:
+            c_range = np.zeros(self.shape[0:2], dtype=self.sample_dtype)
+        
+        if not hasattr(self, 'range'):
+            depth = True
+            self.to_range()
+        c_range += self.range
+
+        obj_new = self.copy()
+
+        if len(np.unique(self.frequency)) > 1: # We've got FM
+            for i, freq in enumerate(self.frequency):
+                # get the current cal_parms for this frequency
+                cur_cal_parms =self.cal_parms.copy()
+                for key in cur_cal_parms:
+                    if isinstance(cur_cal_parms[key], np.ndarray):
+                        if len(cur_cal_parms[key]) == len(self.frequency):
+                            cur_cal_parms[key] = cur_cal_parms[key][i]
+                obj_new.data[i] = self._to_SV(obj_new.data[i], cur_cal_parms, freq, tvg_correction, c_range)
+        else:
+            cur_cal_parms = self.cal_parms.copy()
+            obj_new.data = self._to_SV(obj_new.data, cur_cal_parms, self.frequency, tvg_correction, c_range)
+
+        if depth is True:
+            # Convert range back to depth
+            obj_new.to_depth()
+
+        # Check if we're returning linear or log values.
+        if linear:
+            # Convert to linear units.
+            obj_new.data[:] = 10 ** (obj_new.data / 10.0)
+            obj_new.data_type='sv'
+        else:
+            obj_new.data_type='Sv'
+        
+        return obj_new
+
+    def _to_SV(self, data, cal_parms, frequency, tvg_correction, c_range):
+
+        #  convert transceiver gain to linear units
+        transceiver_gain = 10**(cal_parms['gain'] / 10)
+
+        # Calculate the system gains.
+        wavelength = cal_parms['sound_speed'] / frequency
+        gains = 10 * np.log10((cal_parms['transmit_power'] * transceiver_gain**2 *
+            wavelength**2 * cal_parms['sound_speed'] * cal_parms['effective_pulse_duration'] *
+            10**(cal_parms['equivalent_beam_angle']/10.0)) / (32 * np.pi**2))
+
+        # Get the range for TVG calculation.  The method used depends on the
+        # hardware used to collect the data.
+        
+
+        if tvg_correction:
+            if cal_parms['transceiver_type'] == 'GPT':
+                # For the Ex60 hardware, the corrected range is computed as:
+                #   c_range = range - (2 * sample_thickness)
+                c_range -= (2.0 * self.sample_thickness)
+            else:
+                # For the Ex80 WBT style hardware corrected range is computed as:
+                #    c_range = range - (sound speed * transmitted pulse length / 4)
+                #c_range -= (power_data.sound_speed * cal_parms['pulse_duration'] / 4.0)[:,np.newaxis]
+                c_range -= (cal_parms['sound_speed'] * cal_parms['pulse_duration'] / 4.0)
+
+            #  zero out negative and zero ranges
+            c_range[c_range <= 0] = 1e-20 
+
+        # Calculate time varied gain.
+        tvg = c_range.copy()
+        tvg = 20.0 * np.log10(tvg)
+
+        # Calculate absorption - our starting point.
+        sv_data = (2.0 * cal_parms['absorption_coefficient']) * c_range
+
+        # Add in power and TVG.
+        sv_data += data + tvg
+
+        # Subtract the system gains.
+        sv_data -= gains
+        
+        # Only apply to CW data
+        if cal_parms['pulse_form'].all() == 0:
+            data+= (2.0 * cal_parms['sa_correction'])
+        elif cal_parms['pulse_form'].any() == 0:
+            not_fm = cal_parms['pulse_form'] == 0
+            data[not_fm,:]-= (2.0 * cal_parms['sa_correction'])[not_fm, np.newaxis]
+            
+        return sv_data
 
 
 def read_ev_mat(channel_id, frequency, ev_mat_filename, data_type='Sv',
