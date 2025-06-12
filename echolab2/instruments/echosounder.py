@@ -63,6 +63,8 @@ from . import EK80
 from . import EK60
 from .util import simrad_utils
 import numpy as np
+from ..processing import mask, noise, line
+import copy
 
 
 SIMRAD_EK60 = 0
@@ -1131,6 +1133,20 @@ def _check_filetype(filename):
     else:
        return -1
 
+def add_noise_estimate(data_object, frequencies=None, channel_ids=None):
+    '''
+    Adds noise estimate to an Sv processed data dictionary, keyed by channel ID.
+    '''
+    pass
+
+    #for channel in data_object:
+        # if it's an active channel, get the matching passive channel
+        # convert the passive channel to power
+        # calculate the noise estimate from the passive channel
+        # add the noise estimate (in power) to the active channel
+        # TEMP: build a noise estimate that matches the size of the active channel and convert to Sv
+
+
 def _find_matching_channel(data_obj,channel_id): # update to deal with either raw or processed objects, .data_type
         '''
         Simple approach to finding matching channel based on pre-defined attributes. Acts a 
@@ -1204,3 +1220,83 @@ def _compare_pulse(primary_obj,secondary_obj, raw=True):
 
 class UnknownFormatError(Exception):
     pass
+
+
+def apply_boundary_exclusions(data_object, exclude_below_line='xyz', exclude_above_line=None, bottom_offset=0, exclude_val=np.nan):
+    '''
+    Default is to apply the bottom line associated with the channel ('xyz').  
+    '''
+    data_object_new = copy.deepcopy(data_object)
+
+    if not isinstance(data_object_new, dict):
+        raise TypeError('Expected a dictionary of processed_data objects (e.g., Sv)')
+    for channel in data_object_new:
+        if data_object_new[channel].cal_parms['channel_mode'] == 0: #active channel
+            data_object_new[channel] = apply_lines(data_object_new[channel],exclude_below_line=exclude_below_line,exclude_above_line=exclude_above_line, bottom_offset=bottom_offset, exclude_val=exclude_val)
+    return data_object_new
+
+
+def apply_lines(data_object,exclude_below_line='xyz',exclude_above_line=None, bottom_offset=0, exclude_val=np.nan):
+    '''
+    Applies an exclusion mask to a processed data object
+    data are returned as 
+    '''
+    exclusion_mask = mask.mask(like=data_object, value=False)
+
+    # apply exclude above and below lines if provided
+    if exclude_above_line is not None:
+        if isinstance(exclude_above_line, int) | isinstance(exclude_above_line, float):
+            exclude_above_line = line.line(ping_time=data_object.ping_time, data=exclude_above_line)
+        exclusion_mask.apply_above_line(exclude_above_line, value=True)
+    
+    if exclude_below_line is not None:
+        if exclude_below_line == 'xyz':
+            if hasattr(data_object, 'bottom_line'):
+                exclusion_mask.apply_below_line(data_object.bottom_line-bottom_offset, value=True)
+            else:
+                print('No bottom line found in the data for channel %s' % data_object.channel_id)
+                
+        elif isinstance(exclude_below_line, int) | isinstance(exclude_below_line, float):
+            exclude_below_line = line.line(ping_time=data_object.ping_time, data=exclude_below_line)
+            exclusion_mask.apply_below_line(exclude_below_line, value=True)
+    
+    data_object[exclusion_mask] = exclude_val  # set masked values to np.nan or -9999
+    return data_object
+
+
+def noise_correct(data_object, SNR_threshold=None,remove_passive=True,keep_noise_Sv=True,thresh=20,min_range=5,run_mean_weights=np.array([.25,.5,.25])):
+
+    data_object = copy.deepcopy(data_object)
+    remove_channels = []
+
+    for channel in data_object:
+        if data_object[channel].cal_parms['channel_mode'] == 0:
+            passive_channel = _find_matching_channel(data_object, channel)
+            passive_channel_power = data_object[passive_channel].to_power()
+            passive_channel_power = noise.noise_from_passive(passive_channel_power,thresh=thresh,min_range=min_range,run_mean_weights=run_mean_weights)
+
+            if passive_channel_power.noise_P.ndim == 2:
+                noise_power = np.zeros((passive_channel_power.noise_P.shape[0], data_object[channel].ping_time.shape[0]), dtype=passive_channel_power.noise_P.dtype)
+                for i,n in enumerate(passive_channel_power.noise_P):
+                    noise_power[i] = np.interp(data_object[channel].ping_time.astype('d'), passive_channel_power.ping_time.astype('d'), n)
+            else:
+                noise_power = np.interp(data_object[channel].ping_time.astype('d'), passive_channel_power.ping_time.astype('d'), passive_channel_power.noise_P)
+            
+            data_object[channel].add_object_attribute('noise_power',noise_power)
+            noise.Sv_noise_from_estimate(data_object[channel])
+
+            data_object[channel] = noise.noise_correct(data_object[channel])
+            
+            if SNR_threshold is not None:
+                data_object[channel]=noise.SNR_threshold(data_object[channel],SNR_threshold)
+
+            if remove_passive:
+                remove_channels.append(passive_channel)
+            if keep_noise_Sv is False:
+                del data_object[channel].noise_Sv
+
+    if remove_passive:
+        for k in remove_channels:
+            data_object.pop(k)
+
+    return data_object
