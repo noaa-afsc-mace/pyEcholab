@@ -3266,7 +3266,7 @@ class raw_data(ping_data):
         p_data, return_indices = self._get_complex(calibration=calibration,
                 return_depth=False, clear_cache=False, linear=True)
 
-        attribute_name = 'Sv'
+        attribute_name = 'Sv(f)'
         p_data.is_log = True
         p_data.data_type = attribute_name
 
@@ -3318,16 +3318,41 @@ class raw_data(ping_data):
         setattr(p_data, 'n_samples', len(Sv_m_n))
         setattr(p_data, 'sample_thickness', svf_range[1]-svf_range[0])
         setattr(p_data, 'range', svf_range)
-        #p_data.add_data_attribute('Svf', p_data.data)
+
         p_data.is_log = True
-        setattr(p_data, 'frequency', calibration.frequency_fft)
+        setattr(p_data, 'frequency', calibration.frequency_fft)\
+
+        cal_parms = {'gain':calibration.gain_fft,
+                     'transmit_power':calibration.transmit_power,
+                     'equivalent_beam_angle':10*np.log10(psi_m),
+                     'pulse_duration':calibration.pulse_duration,
+                     'absorption_coefficient':alpha_m,
+                     'sa_correction':calibration.sa_correction,
+                     'pulse_form':calibration.pulse_form,
+                     'angle_offset_alongship':calibration.angle_offset_alongship,
+                     'angle_offset_athwartship':calibration.angle_offset_athwartship,
+                     'beam_width_alongship':calibration.beam_width_alongship,
+                     'beam_width_athwartship':calibration.beam_width_alongship,
+                     'transceiver_type' : calibration.transceiver_type,
+                     'sound_speed':calibration.sound_speed,
+                     'effective_pulse_duration':tau_eff,
+                     'channel_mode':self.channel_mode}
+
+
+        for key in cal_parms:
+            if isinstance(cal_parms[key],np.ndarray):
+                if (len(cal_parms[key]) == len(calibration.frequency)):
+                    cal_parms[key] = np.interp(calibration.frequency_fft,calibration.frequency,cal_parms[key])
+                elif len(cal_parms[key]) == p_data.data.shape[1]:
+                    if len(np.unique(cal_parms[key])) == 1:
+                        cal_parms[key] = cal_parms[key][0]
+
+        p_data.add_object_attribute('cal_parms', cal_parms)
 
         delattr(calibration, 'frequency_fft')
         delattr(calibration, 'gain_fft')
 
         return p_data
-
-
 
 
     def get_sv(self, **kwargs):
@@ -4482,9 +4507,44 @@ class raw_data(ping_data):
 
             data_refs[idx] = p_data
 
-        # Return the processed_data object containing the requested data.
-        data_refs.append(return_indices)
-        return data_refs
+            # Build and save the calibration parameters dictionary from what was provided
+            cal_parms = {'gain':None,
+                     'transmit_power':None,
+                     'equivalent_beam_angle':None,
+                     'pulse_duration':None,
+                     'absorption_coefficient':None,
+                     'sa_correction':None,
+                     'pulse_form':None,
+                     'angle_offset_alongship':None,
+                     'angle_offset_athwartship':None,
+                     'beam_width_alongship':None,
+                     'beam_width_athwartship':None,
+                     'transceiver_type': None,
+                     'channel_mode':self.channel_mode}
+
+            # Next, iterate through the dictionary, calling the method to extract
+            # the values for each parameter.
+            for key in cal_parms:
+                cal_parms[key] = calibration.get_parameter(self, key,
+                        return_indices)
+
+            cal_parms['sound_speed'] = np.array([sound_velocity])
+
+            # For EK60 hardware use pulse duration when computing gains
+            # but for EK80 hardware use effective pulse duration.
+            if self.transceiver_type == 'GPT':
+                effective_pulse_duration = cal_parms['pulse_duration']
+            else:
+                effective_pulse_duration = calibration.get_parameter(self,
+                    'effective_pulse_duration', return_indices)
+            cal_parms['effective_pulse_duration'] = effective_pulse_duration
+
+            
+            p_data.add_object_attribute('cal_parms', cal_parms)
+
+            # Return the processed_data object containing the requested data.
+            data_refs.append(return_indices)
+            return data_refs
 
 
     def _get_transducer_offset(self, cal_parms):
@@ -4565,39 +4625,7 @@ class raw_data(ping_data):
         # Populate the calibration parameters required for this method.
         # First, create a dictionary with key names that match the attribute
         # names of the calibration parameters we require for this method.
-        cal_parms = {'gain':None,
-                     'transmit_power':None,
-                     'equivalent_beam_angle':None,
-                     'pulse_duration':None,
-                     'absorption_coefficient':None,
-                     'sa_correction':None,
-                     'pulse_form':None,
-                     'angle_offset_alongship':None,
-                     'angle_offset_athwartship':None,
-                     'beam_width_alongship':None,
-                     'beam_width_athwartship':None}
-
-        # Next, iterate through the dictionary, calling the method to extract
-        # the values for each parameter.
-        for key in cal_parms:
-            cal_parms[key] = calibration.get_parameter(self, key,
-                    return_indices)
-
-        # Get sound_velocity from the power data since get_power might have
-        # manipulated this value. Remember that we're operating on a
-        # processed_data object so all pings share the same sound speed.
-        cal_parms['sound_speed'] = np.empty((return_indices.shape[0]),
-                dtype=np.float32)
-        cal_parms['sound_speed'].fill(power_data.sound_speed)
-
-        # For EK60 hardware use pulse duration when computing gains
-        # but for EK80 hardware use effective pulse duration.
-        if self.transceiver_type == 'GPT':
-            effective_pulse_duration = cal_parms['pulse_duration']
-        else:
-            effective_pulse_duration = calibration.get_parameter(self,
-                'effective_pulse_duration', return_indices)
-
+        cal_parms = power_data.cal_parms
         #  compute transceiver gain compensation for fm signals. This has no effect
         #  on CW signals. From:
         #
@@ -4631,7 +4659,7 @@ class raw_data(ping_data):
         wavelength = cal_parms['sound_speed'] / power_data.frequency
         if convert_to in ['sv','Sv']:
             gains = 10 * np.log10((cal_parms['transmit_power'] * transceiver_gain**2 *
-                wavelength**2 * cal_parms['sound_speed'] * effective_pulse_duration *
+                wavelength**2 * cal_parms['sound_speed'] * cal_parms['effective_pulse_duration'] *
                 10**(cal_parms['equivalent_beam_angle']/10.0)) / (32 * np.pi**2))
         else:
             gains = 10 * np.log10((cal_parms['transmit_power'] * (transceiver_gain)**2 *
@@ -4681,6 +4709,10 @@ class raw_data(ping_data):
         if linear:
             # Convert to linear units.
             data[:] = 10 ** (data / 10.0)
+
+        for key in power_data.cal_parms:
+            if len(np.unique(power_data.cal_parms[key])) == 1:
+                power_data.cal_parms[key] = power_data.cal_parms[key][0]
 
         # Return the result.
         return data
