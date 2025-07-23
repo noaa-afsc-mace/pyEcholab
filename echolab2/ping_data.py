@@ -310,7 +310,7 @@ class ping_data(object):
                 # I'm not sure how we would get here, but if we are we're way off
                 # the beaten path so we'll just go with it.
                 freq_match = True
-               
+
             if not freq_match:
                 if self.frequency.shape[0] == 1:
                     f = 'frequency'
@@ -407,7 +407,7 @@ class ping_data(object):
                     raise ValueError('The replacement data for the' + attribute + ' does not have ' +
                         'the same number of dimensions as the data you are trying to replace. Replacement ' +
                         'data must have the same number of dimensions.')
-                        
+
                 # insert the replacement data on top of the existing data.
                 if data.ndim == 1:
                     data[replace_index] = data_to_insert[:]
@@ -420,7 +420,7 @@ class ping_data(object):
                         'the ' + attribute + ' attribute. Objects containing replacement data ' +
                         'must at least have the same data attributes as the object whose ' +
                         'data you are replacing.')
-                        
+
         # Now update our global properties.
         if hasattr(obj_to_insert, 'channel_id'):
             if obj_to_insert.channel_id not in self.channel_id:
@@ -527,7 +527,7 @@ class ping_data(object):
         """
 
         # Simply inserts a data object at the end of our internal array.
-        self.insert(obj_to_append, ping_number=self.n_pings, force=False)
+        self.insert(obj_to_append, ping_number=self.n_pings, force=force)
 
 
     def insert(self, obj_to_insert, ping_number=None, ping_time=None,
@@ -592,16 +592,15 @@ class ping_data(object):
                 # I'm not sure how we would get here, but if we are we're way off
                 # the beaten path so we'll just go with it.
                 freq_match = True
-               
+
             if not freq_match:
                 if self.frequency.shape[0] == 1:
                     f = 'frequency'
                 else:
                     f = 'frequencies'
                 raise TypeError('The ' + f + ' of the object you are inserting' +
-                                '/appending does not match the ' + f + ' of this ' +
-                                'object. Frequencies must match to append or ' +
-                                'insert.')
+                        '/appending does not match the ' + f + ' of this ' +
+                        'object. Frequencies must match to append or insert.')
 
         # Get some info about the shape of the data we're working with.
         my_pings = self.n_pings
@@ -614,9 +613,8 @@ class ping_data(object):
         if index_array is None:
             # Determine the index of the insertion point.
             insert_index = self.get_indices(start_time=ping_time,
-                                            end_time=ping_time,
-                                            start_ping=ping_number,
-                                            end_ping=ping_number)[0]
+                    end_time=ping_time, start_ping=ping_number,
+                    end_ping=ping_number)[0]
 
             # Check if we're inserting before or after the provided insert
             # point and adjust as necessary.
@@ -645,8 +643,7 @@ class ping_data(object):
             # dimensions of the index and the object to insert match.
             if insert_index.shape[0] != new_pings:
                 raise IndexError('The length of the index_array does not ' +
-                                 'match the number of pings in the object' +
-                                 ' you are inserting.')
+                        'match the number of pings in the object you are inserting.')
 
             # Generate the index used to move the existing pings.
             move_index = np.arange(my_pings)
@@ -760,7 +757,7 @@ class ping_data(object):
                 cs : Match to a 100th of a second or
                 ds : Match to a 10th of a second
                 s  : Match to the second
-                
+
         Returns:
             A dictionary with the keys 'inserted' and 'removed' containing the
             indices of the pings inserted and removed.
@@ -1338,7 +1335,7 @@ class ping_data(object):
         obj.shape = self.shape
         obj._data_attributes = list(self._data_attributes)
         obj._object_attributes  = list(self._object_attributes)
-        
+
 
         # Copy object attributes
         for attr_name in self._object_attributes:

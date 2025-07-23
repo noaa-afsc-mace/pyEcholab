@@ -7,14 +7,16 @@
 
 #  THIS SOFTWARE AND ITS DOCUMENTATION ARE CONSIDERED TO BE IN THE PUBLIC DOMAIN
 #  AND THUS ARE AVAILABLE FOR UNRESTRICTED PUBLIC USE. THEY ARE FURNISHED "AS
-#  IS." THE AUTHORS, THE UNITED STATES GOVERNMENT, ITS INSTRUMENTALITIES,
-#  OFFICERS,#  EMPLOYEES, AND AGENTS MAKE NO WARRANTY, EXPRESS OR IMPLIED,
-#  AS TO THE USEFULNESS#  OF THE SOFTWARE AND DOCUMENTATION FOR ANY PURPOSE.
+#  IS."  THE AUTHORS, THE UNITED STATES GOVERNMENT, ITS INSTRUMENTALITIES,
+#  OFFICERS, EMPLOYEES, AND AGENTS MAKE NO WARRANTY, EXPRESS OR IMPLIED,
+#  AS TO THE USEFULNESS OF THE SOFTWARE AND DOCUMENTATION FOR ANY PURPOSE.
 #  THEY ASSUME NO RESPONSIBILITY (1) FOR THE USE OF THE SOFTWARE AND
 #  DOCUMENTATION; OR (2) TO PROVIDE TECHNICAL SUPPORT TO USERS.
 
 """
+.. module:: echolab2.processed_data
 
+    :synopsis: Container for transformed acoustic data.
 
 | Developed by:  Rick Towler   <rick.towler@noaa.gov>
 | National Oceanic and Atmospheric Administration (NOAA)
@@ -25,7 +27,6 @@
 |       Rick Towler   <rick.towler@noaa.gov>
 | Maintained by:
 |       Rick Towler   <rick.towler@noaa.gov>
-
 """
 
 import copy
@@ -846,19 +847,58 @@ class processed_data(ping_data):
 
     def match_samples(self, other_obj, _return_data=False):
         '''match_samples adjusts the vertical axis of this object to match the vertical
-        axis of the provided processed_data object. The regridding is a linear combination
-        of the inputs based on the fraction of the source bins to the range bins.
+        axis of the provided processed_data object. This method is similar to the Echoview
+        Match Geometry operator.
 
-        This method performs the same function as the Echoview Match Geometry operator.
+        If the sample thickness is the same between this and the other axis, the axis
+        lengths are compared. If this object's length is shorter than the other axis, this
+        object's axis will be extended and the sample data will be padded with NaNs. If
+        this object's axis is longer, it and the sample data will be truncated to match
+        the other object. If both the sample thickness and axes lengths are the same,
+        this method does nothing.
 
-        Original code by: Nils Olav Handegard, Alba Ordonez, Rune Øyerhamn
+        If the sample thickness differs between this object and the other, this object's
+        data will be resampled to to match the other objects axis. Resampling is a linear
+        combination of the inputs based on the fraction of the source bins to the range bins.
+        The sum of the sample data in a ping will be the same between the original data
+        and the resampled data.
+
+        NOTE! This method does not handle cases where sample_offset differs between
+        this and the other object. If the sample_offsets are different, this method will
+        raise an error. Handling these cases is not *that* difficult, we just don't
+        run into cases like this. You're free to add handling for this if needed.
+
+
+        Original resampling code by: Nils Olav Handegard, Alba Ordonez, Rune Øyerhamn
         https://github.com/CRIMAC-WP4-Machine-learning/CRIMAC-preprocessing/blob/NOH_pyech/regrid.py
 
         Args:
             other_obj (processed_data): Pass a reference to the processed_data object
                     with the vertical axis you would like this object to match.
 
+
         '''
+
+        def resize2dv(data, sample_dim, fill_value=np.nan):
+            """
+            resize2dv returns a new array of the specified dimensions with the
+            data from the provided array copied into it. This function is
+            used when we need to resize 2d arrays along the minor axis as
+            ndarray.resize and numpy.resize don't maintain the order of the
+            data in these cases.
+            """
+            # Create the new array.
+            new_array = np.empty((data.shape[0], sample_dim), dtype=self.sample_dtype)
+
+            #  determine the copy bounds and fill the edges if needed
+            n_samps = np.min((data.shape[1], sample_dim))
+            if n_samps == data.shape[1]:
+                new_array[:, n_samps:] = fill_value
+
+            # Copy the data into our new array and return it.
+            new_array[:, 0:n_samps] = data[:, 0:n_samps]
+            return new_array
+
 
         def resample_weights(r_t, r_s):
             """Generates the weights used for resampling
@@ -939,48 +979,122 @@ class processed_data(ping_data):
 
             return W
 
+
+        #  check to make sure the sample offsets are the same between this and the other
+        #  object. Currently we don't handle cases where they are different.
+        if self.sample_offset != other_obj.sample_offset:
+            raise NotImplementedError("The provided data object's sample_offset does " +
+                    "not match this object's sample_offset. The match_samples method " +
+                    "currently does not handle cases where sample offsets differ.")
+
         # Get the vertical axes for the source and target objects
         this_v_axis, this_axis_type = self.get_v_axis()
         target_v_axis, other_axis_type = other_obj.get_v_axis(return_copy=True)
 
-        # Check if the new axis is the the same length.
-        if len(this_v_axis) == len(target_v_axis):
-            # Now check if they are identical.
-            if np.all(np.isclose(this_v_axis, target_v_axis)):
-                # They are identical.  Nothing to do.
-                return
-
-        # Check if they share the same axis type - we'll not allow
-        # regridding if the axis types are different.
+        # Check if they share the same axis type - we'll not allow regridding if the
+        # axis types are different.
         if this_axis_type != other_axis_type:
             raise AttributeError("The provided data object's vertical axis type (" +
                     other_axis_type +  ") does not match this object's type (" +
                     this_axis_type + "). The axes types " + "must match.")
 
-        # create the output array, add a row of zeros at the bottom to be used in edge cases
-        sv_s_mod = np.full((self.data.shape[1]+1, self.data.shape[0]), 1e-30,
-            dtype=self.sample_dtype)
-        sv_s_mod[0:self.data.shape[1],0:self.data.shape[0]] = \
-                np.rot90(self.data[0:self.data.shape[0], 0:self.data.shape[1]])
+        #  There are a couple of cases we need to handle. The first case is where the
+        #  sample sizes between the two PD objects are the same, but the lengths
+        #  (range/depth) are different. The other is where the sample sizes are different.
+        #  The prior is a simple extension or truncation of data while the latter requires
+        #  resampling and is more computationally expensive.
+        resample_this = False
+        truncate_this = False
+        extend_this = False
 
-        # Generate the weights
-        weights = resample_weights(target_v_axis, this_v_axis)
-
-        # Normally we'll update this object's attributes but internal methods
-        # that call this method just want the regridded data only. If _return_data
-        # is set, we'll just return the data.
-        if not _return_data:
-            # Compute the regridded values - update shape and sample count
-            self.data = np.rot90(weights.dot(sv_s_mod), k=-1)
-            self.shape = self.data.shape
-            self.n_samples = self.data.shape[1]
-
-            # Update this object's vertical axis
-            setattr(self, this_axis_type, target_v_axis)
+        # Check if the new axis is the the same length.
+        if this_v_axis.size == target_v_axis.size:
+            # check if they are identical.
+            if np.all(np.isclose(this_v_axis, target_v_axis)):
+                # They are identical.  Nothing to do so just return.
+                return
+            else:
+                # same length but axes don't match, must resample
+                resample_this = True
         else:
-            # Return the gridded data only
-            sv_s_mod = np.rot90(np.matmul(weights, sv_s_mod), k=-1)
-            return sv_s_mod
+            #  axes are not the same length. Check if the difference is simply
+            #  a matter of recording range
+            if this_v_axis.size > target_v_axis.size:
+                if np.all(np.isclose(this_v_axis[:target_v_axis.size], target_v_axis)):
+                    #  axes are the same but this_v_axis is longer so we truncate this object
+                    truncate_this = True
+                else:
+                    #  axes are different and must be regridded
+                    resample_this = True
+            else:
+                if np.all(np.isclose(this_v_axis, target_v_axis[:this_v_axis.size])):
+                    #  axes are the same but this_v_axis is shorter so we extend this object
+                    extend_this = True
+                else:
+                    #  axes are different and must be regridded
+                    resample_this = True
+
+        #  now that we know what we need to do, er, do it
+        if resample_this:
+            # create the output array, add a row of zeros at the bottom to be used in edge cases
+            sv_s_mod = np.full((self.data.shape[1]+1, self.data.shape[0]), 1e-30,
+                dtype=self.sample_dtype)
+            sv_s_mod[0:self.data.shape[1],0:self.data.shape[0]] = \
+                    np.rot90(self.data[0:self.data.shape[0], 0:self.data.shape[1]])
+
+            # Generate the weights
+            weights = resample_weights(target_v_axis, this_v_axis)
+
+            # If _return_data is set, we'll just return the data. Otherwise we update
+            # this objects attributes.
+            if not _return_data:
+                # Compute the regridded values - update shape and sample count
+                self.data = np.rot90(weights.dot(sv_s_mod), k=-1)
+                self.shape = self.data.shape
+                self.n_samples = self.data.shape[1]
+
+                # Update this object's vertical axis
+                setattr(self, this_axis_type, target_v_axis)
+            else:
+                # Return the gridded data only
+                sv_s_mod = np.rot90(np.matmul(weights, sv_s_mod), k=-1)
+                return sv_s_mod
+
+        elif extend_this:
+            # extend the vertical axis of this object to match the other object.
+
+            # If _return_data is set, we'll just return the data. Otherwise we update
+            # this objects attributes.
+            if not _return_data:
+                # resize this object's data array, padding with NaNs and update attributes
+                self.data = resize2dv(self.data, target_v_axis.size)
+                self.shape = self.data.shape
+                self.n_samples = self.data.shape[1]
+
+                # Update this object's vertical axis
+                setattr(self, this_axis_type, target_v_axis)
+            else:
+                # Return the gridded data only
+                sv_s_mod = resize2dv(self.data, target_v_axis.size)
+                return sv_s_mod
+
+        elif truncate_this:
+            # truncate this object vertically to match the other
+
+            # If _return_data is set, we'll just return the data. Otherwise we update
+            # this objects attributes.
+            if not _return_data:
+                # truncate this object's data array, padding with NaNs and update attributes
+                self.data = self.data[:, 0:target_v_axis.size]
+                self.shape = self.data.shape
+                self.n_samples = self.data.shape[1]
+
+                # Update this object's vertical axis
+                setattr(self, this_axis_type, target_v_axis)
+            else:
+                # Return the gridded data only
+                sv_s_mod = self.data[:, 0:target_v_axis.size]
+                return sv_s_mod
 
 
     def match_pings(self, other_data, match_to='cs'):
@@ -1271,9 +1385,9 @@ class processed_data(ping_data):
             other_data = value
 
         # Set the sample data to the provided value(s).
-        
+
         #For 3D array (FM), we need to assign to each frequency separately.
-        if len(self.data.shape)==3: 
+        if len(self.data.shape)==3:
             for i in range(self.data.shape[0]):
                 self.data[i][sample_mask] = other_data
         else:
@@ -1997,7 +2111,7 @@ class processed_data(ping_data):
             linear (bool):  Set to True to return linear values (sv).
 
         Returns:
-            Processed data object with 
+            Processed data object with
         """
 
         if 'sv' not in self.data_type.lower():
@@ -2011,7 +2125,7 @@ class processed_data(ping_data):
         depth=False
         # Get the range for TVG calculation.  The method used depends on the
         # hardware used to collect the data.
-        if len(np.unique(self.frequency)) > 1: 
+        if len(np.unique(self.frequency)) > 1:
             c_range = np.zeros(self.data.shape[1:3], dtype=self.sample_dtype)
         else:
             c_range = np.zeros(self.shape[0:2], dtype=self.sample_dtype)
@@ -2072,13 +2186,13 @@ class processed_data(ping_data):
                 c_range -= (cal_parms['sound_speed'] * cal_parms['pulse_duration'] / 4.0)
 
                 #  zero out negative and zero ranges
-                c_range[c_range <= 0] = 1e-20 
+                c_range[c_range <= 0] = 1e-20
 
             # Calculate time varied gain.
             tvg = c_range.copy()
 
             tvg = 20.0 * np.log10(tvg)
-            
+
             data -= (2.0 * cal_parms['absorption_coefficient']) * c_range
             data -= tvg
             data += gains
@@ -2091,7 +2205,7 @@ class processed_data(ping_data):
                 data[not_fm,:]+= (2.0 * cal_parms['sa_correction'])[not_fm, np.newaxis]
 
             return data
-        
+
     def to_Sv(self, linear=False,tvg_correction=True):
         """Converts a power processed data object to Sv
 
@@ -2106,18 +2220,18 @@ class processed_data(ping_data):
                 (sound speed * transmitted pulse length / 4) for WBTs.
 
         Returns:
-            Processed data object with 
+            Processed data object with
         """
 
         depth=False
         # Get the range for TVG calculation.  The method used depends on the
         # hardware used to collect the data.
 
-        if len(np.unique(self.frequency)) > 1: 
+        if len(np.unique(self.frequency)) > 1:
             c_range = np.zeros(self.data.shape[1:3], dtype=self.sample_dtype)
         else:
             c_range = np.zeros(self.shape[0:2], dtype=self.sample_dtype)
-        
+
         if not hasattr(self, 'range'):
             depth = True
             self.to_range()
@@ -2149,7 +2263,7 @@ class processed_data(ping_data):
             obj_new.data_type='sv'
         else:
             obj_new.data_type='Sv'
-        
+
         return obj_new
 
     def _to_SV(self, data, cal_parms, frequency, tvg_correction, c_range):
@@ -2165,7 +2279,7 @@ class processed_data(ping_data):
 
         # Get the range for TVG calculation.  The method used depends on the
         # hardware used to collect the data.
-        
+
 
         if tvg_correction:
             if cal_parms['transceiver_type'] == 'GPT':
@@ -2179,7 +2293,7 @@ class processed_data(ping_data):
                 c_range -= (cal_parms['sound_speed'] * cal_parms['pulse_duration'] / 4.0)
 
             #  zero out negative and zero ranges
-            c_range[c_range <= 0] = 1e-20 
+            c_range[c_range <= 0] = 1e-20
 
         # Calculate time varied gain.
         tvg = c_range.copy()
@@ -2193,14 +2307,14 @@ class processed_data(ping_data):
 
         # Subtract the system gains.
         sv_data -= gains
-        
+
         # Only apply to CW data
         if cal_parms['pulse_form'].all() == 0:
             data+= (2.0 * cal_parms['sa_correction'])
         elif cal_parms['pulse_form'].any() == 0:
             not_fm = cal_parms['pulse_form'] == 0
             data[not_fm,:]-= (2.0 * cal_parms['sa_correction'])[not_fm, np.newaxis]
-            
+
         return sv_data
 
 

@@ -3157,9 +3157,12 @@ class raw_data(ping_data):
         p_data.data_type = 'complex'
         p_data.is_log = False
 
+        # Adding the data type attribute has been deprecated since it was causing more
+        # problems than it was worth.
+
         # Also create an attribute named after the data type that points to our data.
         # Some people think their code is more readable when they use the this label.
-        setattr(p_data, p_data.data_type, p_data.data)
+        #setattr(p_data, p_data.data_type, p_data.data)
 
 
         # Check if we need to convert to depth
@@ -3178,9 +3181,9 @@ class raw_data(ping_data):
         step: vertical window step in meters. Default is 0.5 m
 
         frequency_resolution : frequency resolution of the output data in Hz
-        
+
         analysis_band: If 1 value is provided, it will be the percentile of the bandwidth
-        to be used for the analysis. If 2 values are provided, it will be the min and max. Default is .9, 
+        to be used for the analysis. If 2 values are provided, it will be the min and max. Default is .9,
         corresponding to removal of the lower and upper 5% of the bandwidth.
         '''
 
@@ -3548,9 +3551,13 @@ class raw_data(ping_data):
         # label we use within pyEcholab to access data within processed data objects.
         p_data.data = sv_data
 
+
+        # Adding the data type attribute has been deprecated since it was causing more
+        # problems than it was worth.
+
         # Also create an attribute named after the data type that points to our data.
         # Some people think their code is more readable when they use the this label.
-        p_data.add_data_attribute(p_data.data_type, p_data.data)
+        #p_data.add_data_attribute(p_data.data_type, p_data.data)
         #setattr(p_data, p_data.data_type, p_data.data)
 
         # Check if we need to convert to depth
@@ -3757,9 +3764,13 @@ class raw_data(ping_data):
         # label we use within pyEcholab to access data within processed data objects.
         p_data.data = sp_data
 
+
+        # Adding the data type attribute has been deprecated since it was causing more
+        # problems than it was worth.
+
         # Also create an attribute named after the data type that points to our data.
         # Some people think their code is more readable when they use the this label.
-        setattr(p_data, p_data.data_type, p_data.data)
+        #setattr(p_data, p_data.data_type, p_data.data)
 
         # Check if we need to convert to depth or heave correct.
         if return_depth:
@@ -4539,7 +4550,7 @@ class raw_data(ping_data):
                     'effective_pulse_duration', return_indices)
             cal_parms['effective_pulse_duration'] = effective_pulse_duration
 
-            
+
             p_data.add_object_attribute('cal_parms', cal_parms)
 
             # Return the processed_data object containing the requested data.

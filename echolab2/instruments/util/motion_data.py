@@ -129,7 +129,7 @@ class motion_data(object):
             self.delayed_heave_m[self.n_raw-1] = datagram['heave_delay_m']
 
 
-    def interpolate(self, p_data, attributes=None, ignore_nans=True):
+    def interpolate(self, p_data, attributes=None, ignore_nans=True, return_zeros=False):
         """
         interpolate returns the requested motion data interpolated to the ping times
         that are present in the provided ping_data object.
@@ -146,6 +146,10 @@ class motion_data(object):
                         MRU1 data:'latitude', 'longitude', 'heave', 'pitch', 'roll', 'heading'
 
             ignore_nans (bool): Set to True to filter out NaN data before interpolating.
+                    Default: True
+            return_zeros (bool): Set to True to return data when all values are zero. By default
+                    this method will not return data for an attribute if all values are zero.
+                    Default: True
 
         Returns a dictionary of numpy arrays keyed by attribute name that contain the
         interpolated data for that attribute.
@@ -183,6 +187,12 @@ class motion_data(object):
                     nan_idx = np.isnan(data)
                     data = data[~nan_idx]
                     times = times[~nan_idx]
+
+                #  check if we are *not* returning zeros and if all values are zero
+                if not return_zeros and np.all(data == 0.):
+                    #  return None since all data for this attribute are zeros
+                    out_data[attribute] = None
+                    continue
 
                 # Interpolate this attribute
                 out_data[attribute] = np.interp(new_times.astype('d'),

@@ -360,12 +360,12 @@ def get_calibration_from_ecs(data_object, ecs_file, channel_map=None, **kwargs):
 
 
 def get_calibration_from_xml(data_object,xml_files,calibrations = None, apply_to_matching_channels = True):
- 
+
     '''get_calibration_from_xml returns a dictionary, keyed by channel ID,
     containing a calibration object populated with data extracted from the
-    EK80 xml files provided. 
-    
-    The function will use the calibration parameters in the raw data to build 
+    EK80 xml files provided.
+
+    The function will use the calibration parameters in the raw data to build
     the calibration objects, and overwrite the appropriate parameters with the
     values from the xml files.
 
@@ -383,13 +383,13 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None, apply_to
 
     apply_to_matching_channels (bool): Set this to True to apply the calibration
         to all matching channels, i.e., active to passive.
-    
+
     '''
- 
+
     # if we're given a string, wrap it in a list
     if not isinstance(xml_files, list):
         xml_files = [xml_files]
-    
+
     # Initiate the calibrations dictionary if not provided an already existing dictionary
     if calibrations is None:
         calibrations = {}
@@ -417,7 +417,7 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None, apply_to
 
     # Create averaged calibrations for channels where multiple xml files exist
     for chan in calibrations.keys():
-        
+
         # Check in case we've provided a calibration dictionary that already has objects in it
         if isinstance(calibrations[chan],list):
 
@@ -430,29 +430,29 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None, apply_to
 
                 # Loop through the calibration attributes that need to be averaged
                 for attr in ['gain', 'sa_correction', 'beam_width_alongship', 'beam_width_athwartship', 'angle_offset_alongship', 'angle_offset_athwartship']:
-                            
+
                     merged_frequency,merged_val,full_frequencies,full_values = np.array([]),np.array([]), np.array([]),np.array([])
 
                     # For each calibration in the list for the channel...
-                    for cal in calibrations[chan]: 
-                        
+                    for cal in calibrations[chan]:
+
                         # get the attribute as a function of frequency
                         current_frequency, current_gain = cal.frequency, getattr(cal,attr)
 
                         # If the frequency/attribute is not an array (CW data), make it an array
-                        
+
                         if not isinstance(current_frequency,np.ndarray):
                             current_frequency = np.array([current_frequency])
 
                         if not isinstance(current_gain,np.ndarray):
                             current_gain = np.array([current_gain])
-                            
+
                         # If the merged frequency array is empty, just add the current frequency array to it
                         if merged_frequency.size==0:
                             merged_frequency = current_frequency
                         else: # otherwise append the current frequency array to the merged frequency array and select only the unique values
                             merged_frequency = np.unique(np.concatenate((merged_frequency,current_frequency),0))
-                        
+
                         # Append the current frequency and attribute values to the all frequency and attribute arrays
                         full_frequencies = np.append(full_frequencies,current_frequency)
                         full_values = np.append(full_values,current_gain)
@@ -470,24 +470,24 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None, apply_to
                         merged_val=merged_val[0]
                     # Set the merged attribute values to the merged calibration object
                     merged_cal.__setattr__(attr,merged_val)
-                
+
                 if len(merged_frequency)>1:
                     merged_cal.__setattr__('frequency',merged_frequency)
-                    
+
                 # Assign the merged calibration to the channel in the calibrations dictionary
                 calibrations[chan] = merged_cal
-            
+
             # If there is only one calibration for the channel, just pull it out of the list
             else:
                 calibrations[chan] = calibrations[chan][0]
-    
+
     # If apply_to_matching_channels is set to True, apply the calibration to all matching channels, i.e., active to passive
     if apply_to_matching_channels:
-        
+
         # For each channel still missing a calibration, find the matching channel
         for chan in [s for s in data_object.channel_ids if s not in calibrations.keys()]:
             matching_channel = _find_matching_channel(data_object,chan)
-            
+
             # If a matching channel is found, apply the calibration to the missing channel
             if matching_channel is not None:
                 calibrations[chan] = calibrations[matching_channel]
@@ -1055,6 +1055,7 @@ def _get_processed_data(data_object, data_type, fm_frequency_domain=True, calibr
             else:
                 #  we have lat (and presumably lon) data so we just get the "regular" motion
                 #  data (pitch, roll, heave, heading)
+                print("echosounder - set motion")
                 p_data.set_motion(data_object.motion_data)
 
             #  apply heave correction if needed - this has no effect if heave
@@ -1106,7 +1107,7 @@ def _filter_channel(chan, raw_obj, channels, frequencies,data_type):
         return_chan = True
     elif chan in channels and raw_obj.configuration[0]['transducer_frequency'] in frequencies:
         return_chan = True
-    
+
     if (data_type=='Svf') and (hasattr(raw_obj,'complex') is False):
         return_chan = False # If we don't have complex we can't caluclate Svf
 
@@ -1149,7 +1150,7 @@ def add_noise_estimate(data_object, frequencies=None, channel_ids=None):
 
 def _find_matching_channel(data_obj,channel_id): # update to deal with either raw or processed objects, .data_type
         '''
-        Simple approach to finding matching channel based on pre-defined attributes. Acts a 
+        Simple approach to finding matching channel based on pre-defined attributes. Acts a
         a helper function for the get_calibration_from_xml function to find the matching channels
         via _compare_pulse function.
         '''
@@ -1172,7 +1173,7 @@ def _find_matching_channel(data_obj,channel_id): # update to deal with either ra
                     all_match = _compare_pulse(data_obj.get_channel_data()[channel_id][0],data_obj.get_channel_data()[ch][0])
                 # If all attributes match, return the channel
                 if all_match:
-                    return ch                        
+                    return ch
         # If no matching channel is found, return None
         else:
             return None
@@ -1181,7 +1182,7 @@ def _compare_pulse(primary_obj,secondary_obj, raw=True):
     '''
     Compares the pulse attributes between two data objects (raw, processed, calibration)
     and returns True if all attributes match, False if any do not match.
-    
+
     primary_obj (object): raw or processed data object
 
     secondary_obj (object): raw, processed, or calibration data object
@@ -1197,7 +1198,7 @@ def _compare_pulse(primary_obj,secondary_obj, raw=True):
             pulse_attrs = ['pulse_form','frequency','pulse_duration','transmit_power']
 
          # Assume they match until proven otherwise
-        
+
         for attr in pulse_attrs:
             # Check if the attribute exists in both channels
             if hasattr(secondary_obj,attr):
@@ -1224,7 +1225,7 @@ class UnknownFormatError(Exception):
 
 def apply_boundary_exclusions(data_object, exclude_below_line='xyz', exclude_above_line=None, bottom_offset=0, exclude_val=np.nan):
     '''
-    Default is to apply the bottom line associated with the channel ('xyz').  
+    Default is to apply the bottom line associated with the channel ('xyz').
     '''
     data_object_new = copy.deepcopy(data_object)
 
@@ -1239,7 +1240,7 @@ def apply_boundary_exclusions(data_object, exclude_below_line='xyz', exclude_abo
 def apply_lines(data_object,exclude_below_line='xyz',exclude_above_line=None, bottom_offset=0, exclude_val=np.nan):
     '''
     Applies an exclusion mask to a processed data object
-    data are returned as 
+    data are returned as
     '''
     exclusion_mask = mask.mask(like=data_object, value=False)
 
@@ -1248,18 +1249,18 @@ def apply_lines(data_object,exclude_below_line='xyz',exclude_above_line=None, bo
         if isinstance(exclude_above_line, int) | isinstance(exclude_above_line, float):
             exclude_above_line = line.line(ping_time=data_object.ping_time, data=exclude_above_line)
         exclusion_mask.apply_above_line(exclude_above_line, value=True)
-    
+
     if exclude_below_line is not None:
         if exclude_below_line == 'xyz':
             if hasattr(data_object, 'bottom_line'):
                 exclusion_mask.apply_below_line(data_object.bottom_line-bottom_offset, value=True)
             else:
                 print('No bottom line found in the data for channel %s' % data_object.channel_id)
-                
+
         elif isinstance(exclude_below_line, int) | isinstance(exclude_below_line, float):
             exclude_below_line = line.line(ping_time=data_object.ping_time, data=exclude_below_line)
             exclusion_mask.apply_below_line(exclude_below_line, value=True)
-    
+
     data_object[exclusion_mask] = exclude_val  # set masked values to np.nan or -9999
     return data_object
 
@@ -1281,12 +1282,12 @@ def noise_correct(data_object, SNR_threshold=None,remove_passive=True,keep_noise
                     noise_power[i] = np.interp(data_object[channel].ping_time.astype('d'), passive_channel_power.ping_time.astype('d'), n)
             else:
                 noise_power = np.interp(data_object[channel].ping_time.astype('d'), passive_channel_power.ping_time.astype('d'), passive_channel_power.noise_P)
-            
+
             data_object[channel].add_object_attribute('noise_power',noise_power)
             noise.Sv_noise_from_estimate(data_object[channel])
 
             data_object[channel] = noise.noise_correct(data_object[channel])
-            
+
             if SNR_threshold is not None:
                 data_object[channel]=noise.SNR_threshold(data_object[channel],SNR_threshold)
 
