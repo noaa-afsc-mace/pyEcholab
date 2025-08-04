@@ -31,7 +31,6 @@
 
 """
 
-import sys
 import struct
 import re
 import numpy as np
@@ -73,11 +72,6 @@ class _SimradDatagramParser(object):
             version   = int(data['type'][3])
 
         elif isinstance(data, str):
-            type_ = data[:3]
-            version   = int(data[3])
-
-        elif isinstance(data, unicode):
-            data = str(data)
             type_ = data[:3]
             version   = int(data[3])
 
@@ -421,12 +415,10 @@ class SimradAnnotationParser(_SimradDatagramParser):
 
         if version == 0:
 
-            if (sys.version_info.major > 2):
-                data['text'] = str(raw_string[self.header_size(version):].strip(b'\x00'), 'ascii', errors='replace')
-            else:
-                data['text'] = unicode(raw_string[self.header_size(version):].strip('\x00'), 'ascii', errors='replace')
+            data['text'] = str(raw_string[self.header_size(version):].strip(b'\x00'), 'ascii', errors='replace')
 
         return data
+
 
     def _pack_contents(self, data, version):
 
@@ -479,14 +471,13 @@ class SimradNMEAParser(_SimradDatagramParser):
                             ready for writing to disk
     '''
 
-    nmea_head_re = re.compile('\$[A-Za-z]{5},')
+    nmea_head_re = re.compile(r'\$[A-Za-z]{5},')
 
     def __init__(self):
         headers = {0: [('type', '4s'),
-                             ('low_date', 'L'),
-                             ('high_date', 'L')
-                            ]
-                        }
+                       ('low_date', 'L'),
+                       ('high_date', 'L')
+                      ]}
 
         _SimradDatagramParser.__init__(self, "NME", headers)
 
@@ -519,10 +510,7 @@ class SimradNMEAParser(_SimradDatagramParser):
 
         if version == 0:
 
-            if (sys.version_info.major > 2):
-                data['nmea_string'] = str(raw_string[self.header_size(version):].strip(b'\x00'), 'ascii', errors='replace')
-            else:
-                data['nmea_string'] = unicode(raw_string[self.header_size(version):].strip('\x00'), 'ascii', errors='replace')
+            data['nmea_string'] = str(raw_string[self.header_size(version):].strip(b'\x00'), 'ascii', errors='replace')
 
             if self.nmea_head_re.match(data['nmea_string'][:7]) is not None:
                 data['nmea_talker'] = data['nmea_string'][1:3]
@@ -934,6 +922,11 @@ class SimradXMLParser(_SimradDatagramParser):
             'AngleOffsetAlongship':[float,'angle_offset_alongship',''],
             'AngleOffsetAthwartship':[float,'angle_offset_athwartship','']})
 
+    sensor_xml_map = OrderedDict({
+            'Type':[str,'type',''],
+            'ManualValue':[float,'manual_value',''],
+            'IsManual':[int,'is_manual','']})
+
 
     def __init__(self):
         headers = {0: [('type', '4s'),
@@ -1155,23 +1148,45 @@ class SimradXMLParser(_SimradDatagramParser):
 
                 #print(xml_string.decode('utf-8'))
 
-                #  parse the pingsequence XML datagram
-                data['pingsequence'] = []
+                #  parse the pingsequence XML datagram - this is fairly simple so
+                #  I'm not using the xml dict remapping like I have for other datagram
+                #  subtypes.
+                data['pingsequence'] = {}
+
+                #  CurrentPingGroupID is a newer attribute that doesn't exist in
+                #  all pingsequence messages? Or maybe only in data files where
+                #  sequencing with ping groups is enabled?
+                if 'CurrentPingGroupID' in root_node.attrib:
+                    data['pingsequence']['current_ping_group_id'] = \
+                            root_node.attrib['CurrentPingGroupID']
+                else:
+                     data['pingsequence']['current_ping_group_id'] = None
+                data['pingsequence']['ping'] = []
                 for h in root_node.iter('Ping'):
                     parm_xml = h.attrib
-                    data['pingsequence'].append(parm_xml['ChannelID'])
+                    data['pingsequence']['ping'].append(parm_xml['ChannelID'])
+
+#            elif data['subtype'] == 'globalpingsequence':
+                #  as far as I can tell, GlobalPingSequence appears once near the beginning
+                #  of the file and contains the details of the ping sequencing setup
+#
+#                print(xml_string.decode('utf-8'))
+
+                #  parse the pingsequence XML datagram
+#                data['globalpingsequence'] = {}
+#                for h in root_node.iter('Ping'):
+#                    parm_xml = h.attrib
+#                    data['pingsequence'].append(parm_xml['ChannelID'])
 
             elif data['subtype'] == 'parameter':
 
-                #print("UNPACK: " + xml_string.decode('utf-8'))
+                #print(xml_string.decode('utf-8'))
 
                 #  parse the parameter XML datagram
                 for h in root_node.iter('Channel'):
                     parm_xml = h.attrib
                     #  add the data to the parameter dict
                     dict_to_dict(parm_xml, data['parameter'], self.parameter_xml_map)
-
-                #print("UNPACK DICT: " + str(data['parameter']))
 
             elif data['subtype'] == 'environment':
 
@@ -1199,6 +1214,19 @@ class SimradXMLParser(_SimradDatagramParser):
                         data['environment']['transducer_sound_speed'].append(xdcr_sound_speed)
                     except:
                         pass
+
+            elif data['subtype'] == 'sensor':
+
+                #print(xml_string.decode('utf-8'))
+
+                #  parse the sensor XML datagram
+                data['sensor'] = {}
+                for h in root_node.iter('Sensor'):
+                    sensor_xml = h.attrib
+                    #  add the data to the sensor dict
+                    dict_to_dict(sensor_xml, data['sensor'], self.sensor_xml_map)
+
+
         return data
 
 
@@ -1339,7 +1367,13 @@ class SimradXMLParser(_SimradDatagramParser):
 
                 # Build the PingSequence XML string
                 root_node = ET.Element('PingSequence')
-                for chan in data['pingsequence']:
+
+                #  add the CurrentPingGroupID attribute if available
+                if data['pingsequence']['current_ping_group_id']:
+                    root_node.set("CurrentPingGroupID",
+                            data['pingsequence']['current_ping_group_id'])
+                #  then add the channels
+                for chan in data['pingsequence']['ping']:
                     ping_node = ET.SubElement(root_node, "Ping")
                     ping_node.attrib['ChannelID'] = chan
 
@@ -1349,6 +1383,12 @@ class SimradXMLParser(_SimradDatagramParser):
                 root_node = ET.Element('Parameter')
                 chan_node = ET.SubElement(root_node, "Channel")
                 update_xml(chan_node, self.parameter_xml_map, data['parameter'])
+
+            elif data['subtype'] == 'sensor':
+
+                # Build the sensor XML string
+                root_node = ET.Element('Sensor')
+                update_xml(root_node, self.sensor_xml_map, data['sensor'])
 
             elif data['subtype'] == 'environment':
 

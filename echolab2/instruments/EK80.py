@@ -35,6 +35,8 @@ $Id$
 
 import os
 import re
+import copy
+import warnings
 import numpy as np
 from scipy.interpolate import interp1d
 from .util.simrad_calibration import calibration
@@ -256,6 +258,7 @@ class EK80(object):
         self._tx_params = {}
         self._environment = {}
         self._ping_sequence = None
+        self._sensor_datagram = None
         self._initial_params = {}
         self._file_n_channels = 0
         self._file_channel_number_map = {}
@@ -394,7 +397,7 @@ class EK80(object):
         to map bottom detections to a channel ID. Bot file detections are assumed to
         be in the same order as the channels in their corresponding .raw files.
         This means that all of the files you read must have the same channel
-        configuration. pyEcholab does not enforce this so
+        configuration. pyEcholab does not enforce this.
 
         There is not always a 1:1 relationship between pings in a .bot file
         and pings in a .raw file as was the case with EK60. The bottom detection
@@ -539,6 +542,7 @@ class EK80(object):
             self._tx_params = {}
             self._environment = {}
             self._ping_sequence = None
+            self._sensor_datagram = None
             self._initial_params = {}
             self._file_channel_number_map = {}
             self._file_n_channels = 0
@@ -759,6 +763,7 @@ class EK80(object):
         # Now remove any channels marked for removal
         for channel_id in remove_channels:
             config_datagram['configuration'].pop(channel_id)
+        #print(config_datagram)
 
         # Return the configuration datagram dict
         return config_datagram
@@ -877,6 +882,7 @@ class EK80(object):
             return result
 
         # Process and store the datagrams by type.
+        #(new_datagram['type'])
 
         # Process all XML parameter datagrams
         if new_datagram['type'].startswith('XML'):
@@ -886,13 +892,16 @@ class EK80(object):
                         new_datagram[new_datagram['subtype']]
                 #  store the channel ID which is required below for ES80 files
                 self._param_channel_id = new_datagram[new_datagram['subtype']]['channel_id']
+                #print(new_datagram[new_datagram['subtype']])
 
             elif new_datagram['subtype'] == 'environment':
                 #  update the most recent environment attribute. EK80 can write partial
                 #  environment datagrams so we have to copy and update the existing
-                #  self._environment dict instead of overwriting it.
-                self._environment = self._environment.copy()
+                #  self._environment dict instead of overwriting it. Do a deep copy
+                #  to copy the svp which is a numpy array.
+                self._environment = copy.deepcopy(self._environment)
                 self._environment.update(new_datagram[new_datagram['subtype']])
+                #print(new_datagram)
 
             # InitialParameter and PingSequence seem to be required for replay
             # in the EK80 application but aren't required to work with the data.
@@ -900,12 +909,34 @@ class EK80(object):
                 #  the initialparameter is a little different in that it appears
                 #  only once in the file after the config header before the filters.
                 self._initial_params = new_datagram[new_datagram['subtype']]
+                #print(new_datagram)
 
             elif new_datagram['subtype'] == 'pingsequence':
                 # The PingSequence datagram seems to come right before the
                 # ping ensemble data (pairs of Parameter+RAW datagrams per
                 # transmitting channel.)
                 self._ping_sequence = new_datagram[new_datagram['subtype']]
+                #print(new_datagram)
+
+            elif new_datagram['subtype'] == 'globalpingsequence':
+                # The GlobalPingSequence datagram seems to come near the beginning
+                # of the file and contain the overall sequencing
+                #self._ping_sequence = new_datagram[new_datagram['subtype']]
+                print(new_datagram)
+
+            elif new_datagram['subtype'] == 'sensor':
+                # The Sensor datagram contains information about cable length for external
+                # sensors. This datagram currently is not associated with channels and
+                # if it exists in a file, there seems to only be one instance. For now we'll
+                # store this within the EK80 object
+                self._sensor_datagram = new_datagram[new_datagram['subtype']]
+                #print(new_datagram)
+
+            else:
+                #  unknown subtype encountered, issue a warning
+                warnings.warn("Unknown XML datagram subtype encountered: '" +
+                        new_datagram['subtype'] + "' The parser and EK80 classes will need " +
+                        "to be updated to handle this datagram type.")
 
             return result
 
@@ -1145,7 +1176,7 @@ class EK80(object):
                 warning_string = ('WARNING - Unknown datagram type encountered: ' +
                         new_datagram['type'] + '. These datagrams will be ignored ' +
                         'until the parser is updated to handle them.')
-                print(warning_string)
+                warnings.warn(warning_string)
 
                 # add this type to our list of known types
                 self._unknown_datagram_types.append(new_datagram['type'])
@@ -1280,10 +1311,10 @@ class EK80(object):
         less white space than the Simrad parser resulting in XML strings that are
         functionally the same but contain fewer characters.
 
-        The goal is to produce files that are replayable within the EK80 application
-        but this method will not automatically add missing datagrams to a file. If you
-        read a file with an older format that will not play in a current version of EK80,
-        writing a copy will not make it compatible.
+        The goal is to produce files that are functionally identical and are replayable
+        within the EK80 application but this method will not automatically add missing
+        datagrams to a file. If you read a file with an older format that will not play
+        in a current version of EK80, writing a copy will not make it compatible.
 
         Args:
             output_filenames (str, dict): A string specifying the full path and
@@ -1673,6 +1704,7 @@ class EK80(object):
             # of every channel.
             environment_times = []
             environment_data = []
+            environment_ids = []
             for channel in data_by_file[infile]:
                 for data in data_by_file[infile][channel]:
                     # First, remove any empty pings from the index.
@@ -1693,9 +1725,12 @@ class EK80(object):
                     # it. This will not match the original datagram timestamp but it should be
                     # functionally the same.
                     for idx in env_idx:
-                        if data['data'].environment[idx] not in environment_data:
+                        if idx not in data['index']:
+                            continue
+                        if id(data['data'].environment[idx]) not in environment_ids:
                             environment_times.append(data['data'].ping_time[idx] - np.timedelta64(1, 'ms'))
                             environment_data.append(data['data'].environment[idx])
+                            environment_ids.append(id(data['data'].environment[idx]))
                         else:
                             time_idx = environment_data.index(data['data'].environment[idx])
                             this_time = data['data'].ping_time[idx] - np.timedelta64(1, 'ms')
@@ -1754,8 +1789,10 @@ class EK80(object):
 
             # we are finally ready to write...
 
-            # Generate output filename if needed - we assume we're passed
-            # a valid path and filename prefix. e.g. 'c:/test/DY2020'
+            # Generate output filename if needed - we assume we're passed a valid path and
+            # filename prefix. e.g. 'c:/test/DY2020' and use the first datagram time for the
+            # file time. This results in filenames close to, but not identical to the originals.
+            # If you require exact names, generate them yourself and pass them in.
             if outfile_name == '':
                 timestamp = date_conversion.dt64_to_datetime(raw_start_time)
                 timestamp = timestamp.strftime("D%Y%m%d-T%H%M%S")
@@ -1776,10 +1813,10 @@ class EK80(object):
             #  keep track of the files we're writing to return to caller
             files_written.append(outfile_name)
 
-            # Build the configuration dict and collect the filter_params and initial_params.
-            # These are file level attributes and as such are the same for every ping in a
-            # file. Since we have already indexed the data by file, we know that every ping
-            # will be the same, so we just take these values from the first ping.
+            # Build the configuration dict and collect the filter_params, initial_params, and
+            # Sensor datagrams. These last three are file level attributes and as such are the
+            # same for every ping in a file. Since we have already indexed the data by file, we
+            # know that every ping will be the same, so we just take these values from the first ping.
             filter_params = {}
             initial_params = {}
             config_dgram = new_datagram(dg_times[0], 'XML', DGRAM_VERSION_KEY['XML'])
@@ -1787,9 +1824,11 @@ class EK80(object):
             config_dgram['subtype'] = 'configuration'
             for channel in data_by_file[infile]:
                 if channel in channel_ids:
-                    # This is a channel we are writing
+                    # This is a channel we are writing - filter params and initial parameters are specific to
+                    # a channel
                     filter_params[channel] = data_by_file[infile][channel][0]['data'].filters[0]
                     initial_params[channel] = data_by_file[infile][channel][0]['data'].initial_parameters[0]
+
                     # Not all files contain the InitialParameters datagram. If a file doesn't,
                     # initial_parameters == None.
                     if initial_params[channel]:
@@ -1799,15 +1838,15 @@ class EK80(object):
                     config_dgram['configuration'][channel] = \
                         data_by_file[infile][channel][0]['configuration']
 
-            # The configuration datagram is the first in the file. Pack the
-            # config dict into raw byte stream and write
+            # The configuration datagram is the first in the file. Pack the config dict into
+            # raw byte stream and write
             bytes_written += raw_fid.write(DGRAM_PARSE_KEY['XML'].to_string(config_dgram))
 
             # I don't know much about the InitialParameter XML datagram. I think it is only
             # used by the EK80 application. What ever it is for, we write it if it exists.
             if do_initial_params:
-                # Create the base datagram dict for the XML Parameter datagram
-                dgram = new_datagram(dg_times[idx], 'XML', DGRAM_VERSION_KEY['XML'])
+                # Create the base datagram dict for the XML InitialParameter datagram
+                dgram = new_datagram(dg_times[0], 'XML', DGRAM_VERSION_KEY['XML'])
 
                 # Build the datagram dictionary
                 dgram['subtype'] = 'initialparameter'
@@ -1830,6 +1869,21 @@ class EK80(object):
                     # And write
                     bytes_written += raw_fid.write(DGRAM_PARSE_KEY['FIL'].to_string(filter_dgram))
 
+            # Write the XMl Sensor datagram - there is very little information about this datagram. I have
+            # only seen it in a few files and when it appears, it occurs once near the beginning of the file.
+            # First check if we have one
+
+            if self._sensor_datagram:
+                dgram = new_datagram(dg_times[0], 'XML', DGRAM_VERSION_KEY['XML'])
+
+                # Build the datagram dictionary
+                dgram['subtype'] = 'sensor'
+                dgram['sensor'] = self._sensor_datagram
+
+                # write the parameter XML datagram
+                bytes_written += raw_fid.write(DGRAM_PARSE_KEY['XML'].to_string(dgram))
+
+
             #  now write out all the rest of the datagrams
             for idx in range(n_datagrams):
 
@@ -1846,14 +1900,15 @@ class EK80(object):
                     if ping_sequence and write_ping_sequence:
 
                         # Filter out channels we are not writing
-                        filtered_sequence = [x for x in ping_sequence if x in channel_ids]
+                        filtered_sequence = [x for x in ping_sequence['ping'] if x in channel_ids]
+                        ping_sequence['ping'] = filtered_sequence
 
                         # Create the base datagram dict for the XML PingSequence datagram
                         dgram = new_datagram(dg_times[idx], 'XML', DGRAM_VERSION_KEY['XML'])
 
                         # Build the datagram dictionary
                         dgram['subtype'] = 'pingsequence'
-                        dgram['pingsequence'] = filtered_sequence
+                        dgram['pingsequence'] = ping_sequence
 
                         # write the parameter XML datagram
                         bytes_written += raw_fid.write(DGRAM_PARSE_KEY['XML'].to_string(dgram))
@@ -2380,8 +2435,8 @@ class raw_data(ping_data):
 
 
     def append_ping(self, sample_datagram, config_params, environment_datagram,
-            tx_parms, filters, initial_params, ping_sequence, start_sample=None,
-            end_sample=None):
+            tx_parms, filters, initial_params, ping_sequence,
+            start_sample=None, end_sample=None):
         """Adds a "pings" worth of data to the object.
 
         This method extracts data from the provided sample_datagram dict and
