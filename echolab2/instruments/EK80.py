@@ -872,10 +872,12 @@ class EK80(object):
             else:
                 self.end_time = dgram_header['timestamp']
 
-        #  if we're here, we're reading the datagram
+        # If we're here, we're reading the datagram. Calling read while passing the header will
+        # re-parse the header so we'll replace the timestamp with the previously parsed and converted value.
         try:
             #  pass the datagram header and read the rest of the datagram
             new_datagram = fid.read(1, header=dgram_header)
+            new_datagram['timestamp'] = dgram_header['timestamp']
         except SimradEOF:
             #  we're at the end of the file
             result['finished'] = True
@@ -1717,16 +1719,16 @@ class EK80(object):
                     dg_type = np.concatenate((dg_type, np.repeat('RAW', times.size)))
 
                     # get the unique environment datagrams for this channel
-                    _, env_idx = np.unique(np.array([id(xi) for xi in data['data'].environment]),
+                    _, env_idx = np.unique(np.array([id(xi) for xi in data['data'].environment[data['index']]]),
                         return_index=True)
-                    # add the distinct environment datagrams to our global list. If we already
-                    # have it in our list, make sure we capture the earliest time it is referenced and
-                    # then subtract 1 ms to ensure it is written before the first ping that referenced
-                    # it. This will not match the original datagram timestamp but it should be
+                    #  map the subset index back to the whole data index
+                    env_idx = data['index'][env_idx]
+
+                    # add the environment datagrams to our global list. If we already have it in our list,
+                    # make sure we capture the earliest time it is referenced and e the first ping that
+                    # referenced it. This will not match the original datagram timestamp but it should be
                     # functionally the same.
                     for idx in env_idx:
-                        if idx not in data['index']:
-                            continue
                         if id(data['data'].environment[idx]) not in environment_ids:
                             environment_times.append(data['data'].ping_time[idx] - np.timedelta64(1, 'ms'))
                             environment_data.append(data['data'].environment[idx])
@@ -1790,9 +1792,9 @@ class EK80(object):
             # we are finally ready to write...
 
             # Generate output filename if needed - we assume we're passed a valid path and
-            # filename prefix. e.g. 'c:/test/DY2020' and use the first datagram time for the
-            # file time. This results in filenames close to, but not identical to the originals.
-            # If you require exact names, generate them yourself and pass them in.
+            # filename prefix. e.g. 'c:/test/DY2020' and use the first raw datagram time for the
+            # file time. If you're not subsampling data, this results in filenames close to, but not
+            # always identical to the originals. If you require exact names, generate them yourself.
             if outfile_name == '':
                 timestamp = date_conversion.dt64_to_datetime(raw_start_time)
                 timestamp = timestamp.strftime("D%Y%m%d-T%H%M%S")
@@ -4906,7 +4908,7 @@ class raw_data(ping_data):
             A dictionary with the keys 'inserted' and 'removed' containing the
             indices of the pings inserted and removed.
         """
-        return super(processed_data, self).match_pings(other_data, match_to='cs')
+        return super(raw_data, self).match_pings(other_data, match_to='cs')
 
 
     def __str__(self):
