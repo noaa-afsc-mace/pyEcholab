@@ -157,3 +157,4 @@ test/loadfile.py
 test/vlw_from_idx_to_raw.py
 *.url
 /test
+*.whl
