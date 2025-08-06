@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<GlobalPingSequence>
+    <ActivePingMode Mode="Sequence" />
+    <PingGroups>
+        <PingGroup PingGroupId="0" PingGroupName="Survey_CW_ALL_Active_MAX">
+            <Pings>
+                <Ping ChannelID="WBT 998500-15 ES18-11mk2_1" />
+                <Ping ChannelID="WBT 978217-15 ES38-7_1" />
+                <Ping ChannelID="WBT 978213-15 ES70-7C_1" />
+                <Ping ChannelID="WBT 976714-15 ES120-7C_1" />
+                <Ping ChannelID="WBT 978208-15 ES200-7C_1" />
+            </Pings>
+        </PingGroup>
+        <PingGroup PingGroupId="1" PingGroupName="Survey_FM_ALL_Active_MAX">
+            <Pings>
+                <Ping ChannelID="WBT 998500-15 ES18-11mk2_3" />
+                <Ping ChannelID="WBT 978217-15 ES38-7_3" />
+                <Ping ChannelID="WBT 978213-15 ES70-7C_3" />
+                <Ping ChannelID="WBT 976714-15 ES120-7C_3" />
+                <Ping ChannelID="WBT 978208-15 ES200-7C_3" />
+            </Pings>
+        </PingGroup>
+        <PingGroup PingGroupId="2" PingGroupName="Survey_CW_ALL_Active_MAX">
+            <Pings>
+                <Ping ChannelID="WBT 998500-15 ES18-11mk2_1" />
+                <Ping ChannelID="WBT 978217-15 ES38-7_1" />
+                <Ping ChannelID="WBT 978213-15 ES70-7C_1" />
+                <Ping ChannelID="WBT 976714-15 ES120-7C_1" />
+                <Ping ChannelID="WBT 978208-15 ES200-7C_1" />
+            </Pings>
+        </PingGroup>
+        <PingGroup PingGroupId="3" PingGroupName="Survey_FM_ALL_Active_MAX">
+            <Pings>
+                <Ping ChannelID="WBT 998500-15 ES18-11mk2_3" />
+                <Ping ChannelID="WBT 978217-15 ES38-7_3" />
+                <Ping ChannelID="WBT 978213-15 ES70-7C_3" />
+                <Ping ChannelID="WBT 976714-15 ES120-7C_3" />
+                <Ping ChannelID="WBT 978208-15 ES200-7C_3" />
+            </Pings>
+        </PingGroup>
+        <PingGroup PingGroupId="4" PingGroupName="Survey_CW_ALL_Active_MAX">
+            <Pings>
+                <Ping ChannelID="WBT 998500-15 ES18-11mk2_1" />
+                <Ping ChannelID="WBT 978217-15 ES38-7_1" />
+                <Ping ChannelID="WBT 978213-15 ES70-7C_1" />
+                <Ping ChannelID="WBT 976714-15 ES120-7C_1" />
+                <Ping ChannelID="WBT 978208-15 ES200-7C_1" />
+            </Pings>
+        </PingGroup>
+        <PingGroup PingGroupId="5" PingGroupName="Survey_FM_ALL_Active_MAX">
+            <Pings>
+                <Ping ChannelID="WBT 998500-15 ES18-11mk2_3" />
+                <Ping ChannelID="WBT 978217-15 ES38-7_3" />
+                <Ping ChannelID="WBT 978213-15 ES70-7C_3" />
+                <Ping ChannelID="WBT 976714-15 ES120-7C_3" />
+                <Ping ChannelID="WBT 978208-15 ES200-7C_3" />
+            </Pings>
+        </PingGroup>
+        <PingGroup PingGroupId="6" PingGroupName="Survey_CW_ALL_Active_MAX">
+            <Pings>
+                <Ping ChannelID="WBT 998500-15 ES18-11mk2_1" />
+                <Ping ChannelID="WBT 978217-15 ES38-7_1" />
+                <Ping ChannelID="WBT 978213-15 ES70-7C_1" />
+                <Ping ChannelID="WBT 976714-15 ES120-7C_1" />
+                <Ping ChannelID="WBT 978208-15 ES200-7C_1" />
+            </Pings>
+        </PingGroup>
+        <PingGroup PingGroupId="7" PingGroupName="Survey_FM_ALL_Active_MAX">
+            <Pings>
+                <Ping ChannelID="WBT 998500-15 ES18-11mk2_3" />
+                <Ping ChannelID="WBT 978217-15 ES38-7_3" />
+                <Ping ChannelID="WBT 978213-15 ES70-7C_3" />
+                <Ping ChannelID="WBT 976714-15 ES120-7C_3" />
+                <Ping ChannelID="WBT 978208-15 ES200-7C_3" />
+            </Pings>
+        </PingGroup>
+        <PingGroup PingGroupId="8" PingGroupName="Survey_CW_ALL_Active_MAX">
+            <Pings>
+                <Ping ChannelID="WBT 998500-15 ES18-11mk2_1" />
+                <Ping ChannelID="WBT 978217-15 ES38-7_1" />
+                <Ping ChannelID="WBT 978213-15 ES70-7C_1" />
+                <Ping ChannelID="WBT 976714-15 ES120-7C_1" />
+                <Ping ChannelID="WBT 978208-15 ES200-7C_1" />
+            </Pings>
+        </PingGroup>
+        <PingGroup PingGroupId="9" PingGroupName="Survey_FM_ALL_Active_MAX">
+            <Pings>
+                <Ping ChannelID="WBT 998500-15 ES18-11mk2_3" />
+                <Ping ChannelID="WBT 978217-15 ES38-7_3" />
+                <Ping ChannelID="WBT 978213-15 ES70-7C_3" />
+                <Ping ChannelID="WBT 976714-15 ES120-7C_3" />
+                <Ping ChannelID="WBT 978208-15 ES200-7C_3" />
+            </Pings>
+        </PingGroup>
+        <PingGroup PingGroupId="10" PingGroupName="Survey_CW_ALL_Active_MAX">
+            <Pings>
+                <Ping ChannelID="WBT 998500-15 ES18-11mk2_1" />
+                <Ping ChannelID="WBT 978217-15 ES38-7_1" />
+                <Ping ChannelID="WBT 978213-15 ES70-7C_1" />
+                <Ping ChannelID="WBT 976714-15 ES120-7C_1" />
+                <Ping ChannelID="WBT 978208-15 ES200-7C_1" />
+            </Pings>
+        </PingGroup>
+        <PingGroup PingGroupId="11" PingGroupName="Survey_FM_ALL_Active_MAX">
+            <Pings>
+                <Ping ChannelID="WBT 998500-15 ES18-11mk2_3" />
+                <Ping ChannelID="WBT 978217-15 ES38-7_3" />
+                <Ping ChannelID="WBT 978213-15 ES70-7C_3" />
+                <Ping ChannelID="WBT 976714-15 ES120-7C_3" />
+                <Ping ChannelID="WBT 978208-15 ES200-7C_3" />
+            </Pings>
+        </PingGroup>
+        <PingGroup PingGroupId="12" PingGroupName="Survey_CW_ALL_Active_MAX">
+            <Pings>
+                <Ping ChannelID="WBT 998500-15 ES18-11mk2_1" />
+                <Ping ChannelID="WBT 978217-15 ES38-7_1" />
+                <Ping ChannelID="WBT 978213-15 ES70-7C_1" />
+                <Ping ChannelID="WBT 976714-15 ES120-7C_1" />
+                <Ping ChannelID="WBT 978208-15 ES200-7C_1" />
+            </Pings>
+        </PingGroup>
+        <PingGroup PingGroupId="13" PingGroupName="Survey_FM_ALL_Active_MAX">
+            <Pings>
+                <Ping ChannelID="WBT 998500-15 ES18-11mk2_3" />
+                <Ping ChannelID="WBT 978217-15 ES38-7_3" />
+                <Ping ChannelID="WBT 978213-15 ES70-7C_3" />
+                <Ping ChannelID="WBT 976714-15 ES120-7C_3" />
+                <Ping ChannelID="WBT 978208-15 ES200-7C_3" />
+            </Pings>
+        </PingGroup>
+        <PingGroup PingGroupId="14" PingGroupName="Survey_CW_ALL_Active_MAX">
+            <Pings>
+                <Ping ChannelID="WBT 998500-15 ES18-11mk2_1" />
+                <Ping ChannelID="WBT 978217-15 ES38-7_1" />
+                <Ping ChannelID="WBT 978213-15 ES70-7C_1" />
+                <Ping ChannelID="WBT 976714-15 ES120-7C_1" />
+                <Ping ChannelID="WBT 978208-15 ES200-7C_1" />
+            </Pings>
+        </PingGroup>
+        <PingGroup PingGroupId="15" PingGroupName="Survey_FM_ALL_Active_MAX">
+            <Pings>
+                <Ping ChannelID="WBT 998500-15 ES18-11mk2_3" />
+                <Ping ChannelID="WBT 978217-15 ES38-7_3" />
+                <Ping ChannelID="WBT 978213-15 ES70-7C_3" />
+                <Ping ChannelID="WBT 976714-15 ES120-7C_3" />
+                <Ping ChannelID="WBT 978208-15 ES200-7C_3" />
+            </Pings>
+        </PingGroup>
+        <PingGroup PingGroupId="16" PingGroupName="Survey_CW_ALL_Active_MAX">
+            <Pings>
+                <Ping ChannelID="WBT 998500-15 ES18-11mk2_1" />
+                <Ping ChannelID="WBT 978217-15 ES38-7_1" />
+                <Ping ChannelID="WBT 978213-15 ES70-7C_1" />
+                <Ping ChannelID="WBT 976714-15 ES120-7C_1" />
+                <Ping ChannelID="WBT 978208-15 ES200-7C_1" />
+            </Pings>
+        </PingGroup>
+        <PingGroup PingGroupId="17" PingGroupName="Survey_FM_ALL_Active_MAX">
+            <Pings>
+                <Ping ChannelID="WBT 998500-15 ES18-11mk2_3" />
+                <Ping ChannelID="WBT 978217-15 ES38-7_3" />
+                <Ping ChannelID="WBT 978213-15 ES70-7C_3" />
+                <Ping ChannelID="WBT 976714-15 ES120-7C_3" />
+                <Ping ChannelID="WBT 978208-15 ES200-7C_3" />
+            </Pings>
+        </PingGroup>
+        <PingGroup PingGroupId="18" PingGroupName="Survey_CW_ALL_Passive_MAX">
+            <Pings>
+                <Ping ChannelID="WBT 998500-15 ES18-11mk2_2" />
+                <Ping ChannelID="WBT 978217-15 ES38-7_2" />
+                <Ping ChannelID="WBT 978213-15 ES70-7C_2" />
+                <Ping ChannelID="WBT 976714-15 ES120-7C_2" />
+                <Ping ChannelID="WBT 978208-15 ES200-7C_2" />
+            </Pings>
+        </PingGroup>
+        <PingGroup PingGroupId="19" PingGroupName="Survey_FM_ALL_Passive_MAX">
+            <Pings>
+                <Ping ChannelID="WBT 998500-15 ES18-11mk2_4" />
+                <Ping ChannelID="WBT 978217-15 ES38-7_4" />
+                <Ping ChannelID="WBT 978213-15 ES70-7C_4" />
+                <Ping ChannelID="WBT 976714-15 ES120-7C_4" />
+                <Ping ChannelID="WBT 978208-15 ES200-7C_4" />
+            </Pings>
+        </PingGroup>
+    </PingGroups>
+</GlobalPingSequence>

@@ -39,7 +39,7 @@ class results(object):
 
 
     """results
-    
+
 
     """
 
@@ -57,7 +57,7 @@ class results(object):
             n_included_samples
             n_excluded_samples
             total_samples
-            
+
         Individual cell results are extracted by indexing these arrays by grid interval and
         grid cell. The indexes are zero based and cell 0 with index [0,0] is in the upper
         left corner of the grid.
@@ -71,15 +71,15 @@ class results(object):
 
         self._iter_interval = 0
         self._iter_layer = 0
-        
+
         self.grid = grid
-        
-        
+
+
         grid_shape = (grid.n_intervals, grid.n_layers)
         if grid.grid_data:
             if grid.grid_data.data.ndim > 2:
                 grid_shape = (grid.grid_data.data.shape[0], grid.n_intervals, grid.n_layers)
-        
+
         self.mean_Sv = np.full(grid_shape, np.nan)
         self.nasc = np.full(grid_shape, np.nan)
         self.min_Sv = np.full(grid_shape, np.nan)
@@ -95,11 +95,12 @@ class results(object):
         self.exclude_below_line_mean = np.full(grid_shape, np.nan)
         self.exclude_above_line_mean = np.full(grid_shape, np.nan)
 
+
     def export_to_csv(self, filename, output_empty_cells=False):
-        
+
         #  get a list containing the headers for the file
         file_headers = self._get_csv_headers()
-        
+
         try:
             # open the file
             f = open(filename, 'w')
@@ -107,27 +108,27 @@ class results(object):
             # create the csv writer and write the header
             writer = csv.DictWriter(f, fieldnames=file_headers, lineterminator="\n")
             writer.writeheader()
-            
+
             # then write the rows
             for cell_data in self:
                 if np.isfinite(cell_data['nasc']) or output_empty_cells:
                     writer.writerow(cell_data)
-            
+
             # close the file
             f.close()
-            
+
         except Exception as e:
             raise e
-    
-    
+
+
     def __iter__(self):
         """
         The integration.results class is iterable and will return results by interval, row
         """
-        
+
         self._iter_interval = 0
         self._iter_layer = 0
-        
+
         return self
 
     def __next__(self):
@@ -136,14 +137,14 @@ class results(object):
         if self._iter_layer == self.grid.n_layers:
             self._iter_layer = 0
             self._iter_interval += 1
-        
+
         #  check if we're done with the last interval
         if self._iter_interval == self.grid.n_intervals:
             raise StopIteration
 
         #  build the return dict for this cell's results
         cell_data = {}
-        
+
         #  first populate the results for this cell
         cell_data['interval'] = self._iter_interval + 1
         cell_data['layer'] = self._iter_layer + 1
@@ -155,14 +156,14 @@ class results(object):
         cell_data['good_samples'] = self.good_samples[self._iter_interval, self._iter_layer]
         cell_data['excluded_samples'] = self.excluded_samples[self._iter_interval, self._iter_layer]
         cell_data['total_samples'] = self.total_samples[self._iter_interval, self._iter_layer]
-        
+
         cell_data['min_sv_threshold_applied'] = self.min_sv_threshold_applied[self._iter_interval, self._iter_layer]
         cell_data['max_sv_threshold_applied'] = self.max_sv_threshold_applied[self._iter_interval, self._iter_layer]
         cell_data['mean_height'] = self.mean_height[self._iter_interval, self._iter_layer]
         cell_data['exclude_below_line_mean'] = self.exclude_below_line_mean[self._iter_interval, self._iter_layer]
         cell_data['exclude_above_line_mean'] = self.exclude_above_line_mean[self._iter_interval, self._iter_layer]
-        
-        
+
+
         #  then add the grid properties for this cell
         if hasattr(self.grid, 'range_start'):
             cell_data['layer_start'] = self.grid.range_start[self._iter_layer]
@@ -178,7 +179,7 @@ class results(object):
         cell_data['time_start'] = self.grid.time_start[self._iter_interval]
         cell_data['time_middle'] = self.grid.time_middle[self._iter_interval]
         cell_data['time_end'] = self.grid.time_end[self._iter_interval]
-        
+
         #  add the optional grid params
         if hasattr(self.grid, 'latitude_start'):
             cell_data['latitude_start'] = self.grid.latitude_start[self._iter_interval]
@@ -197,7 +198,7 @@ class results(object):
 
         #  increment the layer counter
         self._iter_layer += 1
-        
+
         return cell_data
 
 
@@ -207,37 +208,37 @@ class results(object):
         headers for the current results. The order items are in this list defines the
         order they are written in the CSV.
         """
-        
+
         # Build up the list of CSV headers. This defines the order in the CSV file
         csv_headers = ['interval', 'layer','mean_Sv','nasc','mean_height']
-        
+
         if hasattr(self.grid, 'range_start'):
             csv_headers.extend(['range_mean'])
         if hasattr(self.grid, 'depth_start'):
             csv_headers.extend(['depth_mean'])
-            
+
         csv_headers.extend(['good_samples', 'layer_start', 'layer_end','ping_start',
                 'ping_middle', 'ping_end'])
-                
+
         if hasattr(self.grid, 'distance_nmi_start'):
             csv_headers.extend(['distance_start', 'distance_middle', 'distance_end'])
-           
+
         csv_headers.extend(['time_start','time_middle','time_end'])
-                
+
         if hasattr(self.grid, 'latitude_start'):
             csv_headers.extend(['latitude_start','latitude_middle','latitude_end'])
         if hasattr(self.grid, 'longitude_start'):
             csv_headers.extend(['longitude_start','longitude_middle',
                     'longitude_end'])
-        
+
         csv_headers.extend(['min_sv_threshold_applied','max_sv_threshold_applied', #'thickness_mean',
                 'exclude_below_line_mean','exclude_above_line_mean',
                 'excluded_samples','total_samples'])
-        
+
         if hasattr(self.grid, 'mean_sog'):
             csv_headers.extend(['mean_sog'])
 
-            
+
         return csv_headers
 
 
@@ -269,19 +270,29 @@ class results(object):
 class integrator(object):
 
     """
-    
+
 
     """
 
-    def __init__(self, min_threshold=-70, min_threshold_applied=False, 
+    def __init__(self, min_threshold=-70, min_threshold_applied=False,
             max_threshold=0, max_threshold_applied=False):
         """Initializes a new integration class object.
 
-    Arguments:
-
-        interval_length (int OR float OR timedelta64): Specify the length of the grid intervals in
-                units specified in the interval_axis keyword argument.
-        
+        Args:
+            min_threshold (float): Set this to the minimum data value to be included
+                    in the integration. Data with values less that this threshold will
+                    be excluded from integration.
+                        Default: -70
+            min_threshold_applied (bool): set this to True to apply the minimum threshold.
+                    When false, minimum thresholding is not applied.
+                        Default: False
+            max_threshold (float): Set this to the maximum data value to be included
+                    in the integration. Data with values more that this threshold will
+                    be excluded from integration.
+                        Default: 0
+            max_threshold_applied (bool): set this to True to apply the maximum threshold.
+                    When false, maximum thresholding is not applied.
+                        Default: False
 
         """
         super(integrator, self).__init__()
@@ -291,15 +302,38 @@ class integrator(object):
         self.min_threshold_applied = min_threshold_applied
         self.max_threshold = max_threshold
         self.max_threshold_applied = max_threshold_applied
-        
 
 
     def integrate(self, p_data, integration_grid, inclusion_mask=None, no_data_mask=None,
             exclude_above_line=None, exclude_below_line=None):
         """
         integrate ...
+
+        Args:
+            p_data (processed_data): a reference to the processed data object that
+                    contains the data you want to integrate.
+            integration_grid (grid): a reference to the grid object that defines the
+                    integration grid.
+            inclusion_mask (mask): a reference to a mask object where samples set to
+                    True will be included in integration. If no mask is provided, all
+                    samples will be included. The inclusion mask only includes/excludes
+                    data values. Samples will still be used for the volume calculation.
+                        Default: None (all samples included in integration)
+            no_data_mask (mask): a reference to a mask object where samples set to
+                    True will be treated as NO DATA, meaning both their value and
+                    volume will be excluded from integration.
+                        Default: None (all samples are considered good data)
+            exclude_above_line (line): a reference to a line object that defines the
+                    upper bound of data to integrate. Any samples that fall above
+                    this line will not be included in integration.
+                        Default: None
+            exclude_below_line (line): a reference to a line object that defines the
+                    lower bound of data to integrate. Any samples that fall below
+                    this line will not be included in integration.
+                        Default: None
+
         """
-        
+
         # Generate the threshold mask if we're supposed to. It is assumed that
         # the specified thresholds are in the same units as the provided data.
         threshold_mask = None
@@ -315,12 +349,12 @@ class integrator(object):
         elif self.max_threshold_applied:
             # we're only applying the max threshold
             threshold_mask = p_data.data >= self.max_threshold
-        
+
         # check if we have been given an inclusion mask and create if not.
         # By default we assume all samples will be included in integration.
         if inclusion_mask is None:
             inclusion_mask = mask.mask(like=p_data, value=True)
-            
+
         # apply exclude above and below lines if provided
         if exclude_above_line is not None:
             inclusion_mask.apply_above_line(exclude_above_line, value=False)
@@ -329,24 +363,24 @@ class integrator(object):
 
         #  create the results object to return
         int_results = results(integration_grid)
-        
+
         # convert log data to linear
         if p_data.is_log:
             p_data.to_linear()
             p_data_is_log = True
         else:
             p_data_is_log = False
-        
+
 
         is_3d = len(integration_grid.grid_data.data.shape) > 2
         f_range = range(integration_grid.grid_data.data.shape[0]) if is_3d else [None]
 
         for f in f_range:
             # using the provided grid, integrate by interval and layer
-            
+
             for interval in range(integration_grid.n_intervals):
-                
-                # determine the vertical extent of the integration. This allows us to skip 
+
+                # determine the vertical extent of the integration. This allows us to skip
                 # integrating cells that are entirely above/below the exclude lines.
                 ping_map = integration_grid.ping_interval_map == interval
                 if exclude_above_line is not None:
@@ -364,7 +398,7 @@ class integrator(object):
                     # this currently might include an extra layer?
                 else:
                     integration_layer_end = integration_grid.n_layers
-                
+
                 # work thru the layers for this interval
                 for layer in range(integration_layer_start, integration_layer_end):
 
@@ -379,17 +413,17 @@ class integrator(object):
 
                     # and again to get the included data mask for this cell
                     cell_include = inclusion_mask[cell_mask]
-                    
+
                     # check if the user provided a no data mask and apply
                     if no_data_mask is not None:
                         # yes, get the no data samples and set to nan
                         cell_bad = no_data_mask[cell_mask]
-                        cell_data[cell_bad] = np.nan 
-                    
+                        cell_data[cell_bad] = np.nan
+
                     #  apply the threshold mask if specified
                     if threshold_mask is not None:
                         # When applying threshold masks for integration, you want the samples
-                        # to be included in the layer thickness calculation so we will just 
+                        # to be included in the layer thickness calculation so we will just
                         # set these samples to a tiny number
                         cell_zero = threshold_mask[cell_mask]
                         if p_data.is_log:
@@ -405,19 +439,16 @@ class integrator(object):
                     n_pings_in_cell  = integration_grid.interval_pings[interval]
                     n_samples = integration_grid.layer_samples[layer]
                     total_samples = n_samples * n_pings_in_cell
-                    
+
                     # compute effective height of layer by calculating the fraction of the cell
                     # that has been excluded and pro-rating the height. Bad data are excluded
                     # from the total number of samples.
-                    cell_thickness = (p_data.sample_thickness * n_samples) * (n_included_samples / 
+                    cell_thickness = (p_data.sample_thickness * n_samples) * (n_included_samples /
                             (total_samples - n_no_data_samples))
-                    
-                    #cell_thickness = integration_grid.layer_thickness * (n_included_samples / 
-                    #        (total_samples - n_no_data_samples))  
-                            
+
                     # get the data we're integrating
                     cell_data_included = cell_data[cell_include]
-                    
+
                     #  Now compute the mean and some other bits
                     if np.nansum(cell_data_included) > 0:
                         cell_mean_sv = np.nanmean(cell_data_included,axis=0)
@@ -435,14 +466,14 @@ class integrator(object):
                             cell_min_Sv = 10.0 * np.log10(cell_min_sv)
                         else:
                             cell_min_Sv = -999
-            
+
                     # if no data in cell, make it a nan
                     elif cell_data_included.size == 0:
                         cell_mean_Sv = np.nan
                         cell_min_Sv = np.nan
                         cell_max_Sv = np.nan
                         cell_nasc = np.nan
-                    
+
                     else: # if any samples present report as zero
                         cell_mean_Sv = -999
                         cell_min_Sv = -999
@@ -474,7 +505,7 @@ class integrator(object):
                         int_results.min_sv_threshold_applied[interval, layer] = self.min_threshold_applied
                         int_results.max_sv_threshold_applied[interval, layer] = self.max_threshold_applied
                         int_results.mean_height[interval, layer] = cell_thickness
-                    
+
                     if exclude_above_line is not None:
                         line_int_mask = np.logical_and(exclude_above_line.ping_time >= integration_grid.time_start[interval],
                                 exclude_above_line.ping_time < integration_grid.time_end[interval])
@@ -482,8 +513,8 @@ class integrator(object):
                             int_results.exclude_above_line_mean[f, interval, layer] = np.nanmean(exclude_above_line.data[line_int_mask])
                         else:
                             int_results.exclude_above_line_mean[interval, layer] = np.nanmean(exclude_above_line.data[line_int_mask])
-                                                
-                    
+
+
                     if exclude_below_line is not None:
                         line_int_mask = np.logical_and(exclude_below_line.ping_time >= integration_grid.time_start[interval],
                                 exclude_below_line.ping_time < integration_grid.time_end[interval])
@@ -491,11 +522,11 @@ class integrator(object):
                             int_results.exclude_below_line_mean[f, interval, layer] = np.nanmean(exclude_below_line.data[line_int_mask])
                         else:
                             int_results.exclude_below_line_mean[interval, layer] = np.nanmean(exclude_below_line.data[line_int_mask])
-        
+
         #  convert back to log if required
         if p_data_is_log:
             p_data.to_log()
-        
+
         return int_results
 
 
