@@ -1734,7 +1734,7 @@ class EK80(object):
                             environment_data.append(data['data'].environment[idx])
                             environment_ids.append(id(data['data'].environment[idx]))
                         else:
-                            time_idx = environment_data.index(data['data'].environment[idx])
+                            time_idx = environment_ids.index(id(data['data'].environment[idx]))
                             this_time = data['data'].ping_time[idx] - np.timedelta64(1, 'ms')
                             if environment_times[time_idx] > this_time:
                                 environment_times[time_idx] = this_time
