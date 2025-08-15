@@ -2155,7 +2155,6 @@ class processed_data(ping_data):
             obj_new.data[:] = 10 ** (obj_new.data / 10.0)
 
         if depth is True:
-            print(depth)
             # Convert range back to depth
             obj_new.to_depth()
 
@@ -2178,20 +2177,20 @@ class processed_data(ping_data):
             if cal_parms['transceiver_type'] == 'GPT':
                 # For the Ex60 hardware, the corrected range is computed as:
                 #   c_range = range - (2 * sample_thickness)
-                c_range -= (2.0 * self.sample_thickness)
+                c_range_cor = c_range - (2.0 * self.sample_thickness)
             else:
                 # For the Ex80 WBT style hardware corrected range is computed as:
                 #    c_range = range - (sound speed * transmitted pulse length / 4)
                 #c_range -= (power_data.sound_speed * cal_parms['pulse_duration'] / 4.0)[:,np.newaxis]
-                c_range -= (cal_parms['sound_speed'] * cal_parms['pulse_duration'] / 4.0)
+                c_range_cor = c_range-(cal_parms['sound_speed'] * cal_parms['pulse_duration'] / 4.0)
 
                 #  zero out negative and zero ranges
-                c_range[c_range <= 0] = 1e-20
+                c_range_cor[c_range_cor <= 0] = 1e-20
 
             # Calculate time varied gain.
-            tvg = c_range.copy()
+            #tvg = c_range_cor.copy()
 
-            tvg = 20.0 * np.log10(tvg)
+            tvg = 20.0 * np.log10(c_range_cor)
 
             data -= (2.0 * cal_parms['absorption_coefficient']) * c_range
             data -= tvg

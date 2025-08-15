@@ -1055,7 +1055,6 @@ def _get_processed_data(data_object, data_type, fm_frequency_domain=True, calibr
             else:
                 #  we have lat (and presumably lon) data so we just get the "regular" motion
                 #  data (pitch, roll, heave, heading)
-                print("echosounder - set motion")
                 p_data.set_motion(data_object.motion_data)
 
             #  apply heave correction if needed - this has no effect if heave
@@ -1265,7 +1264,7 @@ def apply_lines(data_object,exclude_below_line='xyz',exclude_above_line=None, bo
     return data_object
 
 
-def noise_correct(data_object, SNR_threshold=None,remove_passive=True,keep_noise_Sv=True,thresh=20,min_range=5,run_mean_weights=np.array([.25,.5,.25])):
+def noise_correct(data_object, SNR_threshold=None,remove_passive=True,keep_noise_Sv=True,exclude_val=-999,thresh=20,min_range=5,run_mean_weights=np.array([.25,.5,.25])):
 
     data_object = copy.deepcopy(data_object)
     remove_channels = []
@@ -1289,7 +1288,7 @@ def noise_correct(data_object, SNR_threshold=None,remove_passive=True,keep_noise
             data_object[channel] = noise.noise_correct(data_object[channel])
 
             if SNR_threshold is not None:
-                data_object[channel]=noise.SNR_threshold(data_object[channel],SNR_threshold)
+                data_object[channel]=noise.SNR_threshold(data_object[channel],SNR_threshold,exclude_val=exclude_val)
 
             if remove_passive:
                 remove_channels.append(passive_channel)
