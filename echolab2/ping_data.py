@@ -737,7 +737,8 @@ class ping_data(object):
         self.shape = self._shape()
 
 
-    def match_pings(self, other_data, match_to='cs'):
+    def match_pings(self, other_data, match_to='cs', insert_only=False,
+            remove_only=False):
         """Matches the ping times in this object to the ping times in the object
         provided. It does this by inserting and/or deleting pings. Ping times in
         the other object that aren't in this object are inserted. Ping times in
@@ -754,9 +755,24 @@ class ping_data(object):
             A lower precision allows matching in cases where there is a slight
             time difference between the two data sources.
 
-                cs : Match to a 100th of a second or
+                cs : Match to a 100th of a second
                 ds : Match to a 10th of a second
                 s  : Match to the second
+
+                Default: 'cs'
+
+            insert_only (bool): Set to True to only insert pings into this object
+            that aren't in the other object. Pings in this object that aren't in
+            the other object will not be removed.
+
+                Default: False
+
+            remove_only (bool): Set to True to only remove pings in this object
+            that aren't in the other object. Pings in the other object that aren't
+            in this object will not be inserted. This is useful when you want to
+            re-write raw data after matching pings.
+
+                Default: False
 
         Returns:
             A dictionary with the keys 'inserted' and 'removed' containing the
@@ -785,25 +801,27 @@ class ping_data(object):
             other_time = np.around(other_data.ping_time.astype('uint64') + round_amt,
                     truncate_to)
 
-            #  remove any "extra" pings this object may have
-            idx_out = np.isin(this_time, other_time, invert=True)
-            idx_out = np.nonzero(idx_out)[0]
-            if idx_out.size > 0:
-                # We have some extra pings, delete them
-                results['removed'] = idx_out
-                self.delete(index_array=idx_out)
+            if not insert_only:
+                #  remove any "extra" pings this object may have
+                idx_out = np.isin(this_time, other_time, invert=True)
+                idx_out = np.nonzero(idx_out)[0]
+                if idx_out.size > 0:
+                    # We have some extra pings, delete them
+                    results['removed'] = idx_out
+                    self.delete(index_array=idx_out)
 
-            # Insert any pings that this object is missing
-            idx_in = np.isin(other_time, this_time, invert=True)
-            idx_in = np.nonzero(idx_in)[0]
-            if idx_in.size > 0:
-                # There were missing pings, we'll insert "empty" pings in their place
-                results['inserted'] = idx_in
-                self.insert(self.empty_like(len(idx_in)),
-                        index_array=idx_in, force=True)
+            if not remove_only:
+                # Insert any pings that this object is missing
+                idx_in = np.isin(other_time, this_time, invert=True)
+                idx_in = np.nonzero(idx_in)[0]
+                if idx_in.size > 0:
+                    # There were missing pings, we'll insert "empty" pings in their place
+                    results['inserted'] = idx_in
+                    self.insert(self.empty_like(len(idx_in)),
+                            index_array=idx_in, force=True)
 
-                # Lastly, update the times
-                self.ping_time[idx_in] = other_data.ping_time[idx_in]
+                    # Lastly, update the times
+                    self.ping_time[idx_in] = other_data.ping_time[idx_in]
 
         return results
 

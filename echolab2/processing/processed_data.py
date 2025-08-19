@@ -1097,7 +1097,7 @@ class processed_data(ping_data):
                 return sv_s_mod
 
 
-    def match_pings(self, other_data, match_to='cs'):
+    def match_pings(self, other_data, **kwargs):
         """Matches the ping times in this object to the ping times in the
         processed_data object provided. It does this by matching times, inserting
         and/or deleting pings as needed. It does not interpolate. Ping times in
@@ -1114,16 +1114,34 @@ class processed_data(ping_data):
                 will be matched to.
 
             match_to (str): Set to a string defining the precision of the match.
+            A lower precision allows matching in cases where there is a slight
+            time difference between the two data sources.
 
                 cs : Match to a 100th of a second
                 ds : Match to a 10th of a second
                 s  : Match to the second
+
+                Default: 'cs'
+
+            insert_only (bool): Set to True to only insert pings into this object
+            that aren't in the other object. Pings in this object that aren't in
+            the other object will not be removed.
+
+                Default: False
+
+            remove_only (bool): Set to True to only remove pings in this object
+            that aren't in the other object. Pings in the other object that aren't
+            in this object will not be inserted. This is useful when you want to
+            re-write raw data after matching pings.
+
+                Default: False
+
         Returns:
             A dictionary with the keys 'inserted' and 'removed' containing the
             indices of the pings inserted and removed.
 
         """
-        return super(processed_data, self).match_pings(other_data, match_to='cs')
+        return super(processed_data, self).match_pings(other_data, **kwargs)
 
 
     def resize(self, new_ping_dim, new_sample_dim):

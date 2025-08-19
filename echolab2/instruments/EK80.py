@@ -1314,9 +1314,9 @@ class EK80(object):
         functionally the same but contain fewer characters.
 
         The goal is to produce files that are functionally identical and are replayable
-        within the EK80 application but this method will not automatically add missing
-        datagrams to a file. If you read a file with an older format that will not play
-        in a current version of EK80, writing a copy will not make it compatible.
+        within the EK80 application. Note that this method will not automatically add
+        missing datagrams to a file. If you read a file with an older format that will
+        not play in a current version of EK80, writing a copy will not make it compatible.
 
         Args:
             output_filenames (str, dict): A string specifying the full path and
@@ -1325,7 +1325,7 @@ class EK80(object):
                 values specify the full path and *full* output filename that will
                 be used when writing data associated with that input file.
 
-                Providing a string will result in behavior similar to ER60 software
+                Providing a string will result in behavior similar to EK80 software
                 where you provide the folder and filename header and it generates
                 data in that folder naming the files with the header and appending
                 the date and time:
@@ -1425,11 +1425,23 @@ class EK80(object):
             data. This can allow you to easily write subsets of data where the
             pings do not have to be contiguous.
 
-            raw_index_array (dict): Set this to a dictionary, keyed by
-                raw_data object reference, where the values are index arrays that
+            raw_index_array (dict): Set this to a dictionary, keyed by raw_data
+                object reference, where the values are index arrays that
                 specify the pings to write for each raw_data object. If you specify
                 this keyword, the start/stop time/ping and time_order keywords will
                 be ignored.
+
+                The index arrays can be arrays of ping indicies of length n-pings
+                to write, OR they can be boolean arrays the same length as your
+                data arrays where True elements will be written and False elements
+                skipped.
+
+                It is also legal to pass a single index array (i.e. not a dict of
+                index arrays) and that single index array will be used for all
+                channels. If you do this, it is your responsibility to ensure the
+                index is valid across channels either in length, if you pass a
+                boolean index, or that all index values are within range if you
+                pass a true index array.
 
             THE FOLLOWING KEYWORDS ARE NOT IMPLEMENTED YET
 
@@ -1710,7 +1722,7 @@ class EK80(object):
             for channel in data_by_file[infile]:
                 for data in data_by_file[infile][channel]:
                     # First, remove any empty pings from the index.
-                    data['index'] = data['index'][np.isfinite(data['data'].channel_mode[data['index']])]
+                    data['index'] = data['index'][np.isfinite(data['data'].sample_interval[data['index']])]
                     # Then extract the times and references to the data we're writing
                     times = data['data'].ping_time[data['index']]
                     dg_times = np.concatenate((dg_times, times))
@@ -4884,7 +4896,7 @@ class raw_data(ping_data):
                 self.complex.fill(np.nan)
 
 
-    def match_pings(self, other_data, match_to='cs'):
+    def match_pings(self, other_data, **kwargs):
         """Matches the ping times in this object to the ping times in the EK80.raw_data
         object provided. It does this by matching times, inserting and/or deleting
         pings as needed. It does not interpolate. Ping times in the other object
@@ -4898,17 +4910,34 @@ class raw_data(ping_data):
             other_data (ping_data): A ping_data type object that this object
             will be matched to.
 
-            match_to (str): Set to a string defining the precision of the match.
+                        match_to (str): Set to a string defining the precision of the match.
+            A lower precision allows matching in cases where there is a slight
+            time difference between the two data sources.
 
                 cs : Match to a 100th of a second
                 ds : Match to a 10th of a second
                 s  : Match to the second
 
+                Default: 'cs'
+
+            insert_only (bool): Set to True to only insert pings into this object
+            that aren't in the other object. Pings in this object that aren't in
+            the other object will not be removed.
+
+                Default: False
+
+            remove_only (bool): Set to True to only remove pings in this object
+            that aren't in the other object. Pings in the other object that aren't
+            in this object will not be inserted. This is useful when you want to
+            re-write raw data after matching pings.
+
+                Default: False
+
         Returns:
             A dictionary with the keys 'inserted' and 'removed' containing the
             indices of the pings inserted and removed.
         """
-        return super(raw_data, self).match_pings(other_data, match_to='cs')
+        return super(raw_data, self).match_pings(other_data, **kwargs)
 
 
     def __str__(self):
