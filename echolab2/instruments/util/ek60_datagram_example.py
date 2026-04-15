@@ -11,9 +11,10 @@
 from echolab2.instruments.util.simrad_raw_file import RawSimradFile
 
 #  full path to EK80 recorded .raw file
-#filename = 'C:/EK80 Test Data/EK80/CW/complex/DY1802_EK80-D20180301-T185940.raw'
-filename = '//nmfs.local/akc-race/MACE_Acoustic2/DY2503/ek80/raw-fmcw/DY2503-D20250320-T054826.raw'
+filename = 'C:/EK80 Test Data/EK80/CW/complex/DY1802_EK80-D20180301-T185940.raw'
 #filename = '//nmfs.local/akc-race/MACE_Acoustic/OD0809/EK60/Raw/OD0809-D20080604-T033334.raw'
+
+
 
 #  open it for read
 fid =  RawSimradFile(filename, 'r')

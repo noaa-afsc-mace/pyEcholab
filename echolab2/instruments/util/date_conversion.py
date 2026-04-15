@@ -41,14 +41,13 @@ $Id$
 
 import datetime
 import numpy as np
-from pytz import utc as pytz_utc
 import logging
 
 
 #NT epoch is Jan 1st 1601
-UTC_NT_EPOCH = datetime.datetime(1601, 1, 1, 0, 0, 0, tzinfo=pytz_utc)
+UTC_NT_EPOCH = datetime.datetime(1601, 1, 1, 0, 0, 0, tzinfo=datetime.UTC)
 #Unix epoch is Jan 1st 1970
-UTC_UNIX_EPOCH = datetime.datetime(1970, 1, 1, 0, 0, 0, tzinfo=pytz_utc)
+UTC_UNIX_EPOCH = datetime.datetime(1970, 1, 1, 0, 0, 0, tzinfo=datetime.UTC)
 
 EPOCH_DELTA_SECONDS = (UTC_UNIX_EPOCH - UTC_NT_EPOCH).total_seconds()
 
@@ -72,7 +71,7 @@ def dt64_to_datetime(dt64):
 
     ts = (dt64 - np.datetime64('1970-01-01T00:00:00')) / np.timedelta64(1, 's')
 
-    return datetime.datetime.fromtimestamp(ts, tz=pytz_utc)
+    return datetime.datetime.fromtimestamp(ts, tz=datetime.UTC)
 
 
 def dt64_to_nt(dt64):
@@ -94,7 +93,7 @@ def dt64_to_nt(dt64):
     else:
         # Not NaT so we convert to NT time
         ts = (dt64 - np.datetime64('1970-01-01T00:00:00')) / np.timedelta64(1, 's')
-        unix_datetime = datetime.datetime.fromtimestamp(ts, tz=pytz_utc)
+        unix_datetime = datetime.datetime.fromtimestamp(ts, tz=datetime.UTC)
         time_past_nt_epoch = (unix_datetime - UTC_NT_EPOCH)
 
         onehundred_ns_intervals = (((time_past_nt_epoch.days * 86400) + time_past_nt_epoch.seconds) *
@@ -151,13 +150,13 @@ def unix_to_nt(unix_timestamp):
 
     if isinstance(unix_timestamp, datetime.datetime):
         if unix_timestamp.tzinfo is None:
-            unix_datetime = pytz_utc.localize(unix_timestamp)
+            unix_datetime = unix_timestamp.replace(tzinfo=datetime.UTC)
 
-        elif unix_timestamp.tzinfo == pytz_utc:
+        elif unix_timestamp.tzinfo == datetime.UTC:
             unix_datetime = unix_timestamp
 
         else:
-            unix_datetime = pytz_utc.normalize(unix_timestamp.astimezone(pytz_utc))
+            unix_datetime = unix_timestamp.astimezone(datetime.UTC)
     elif isinstance(unix_timestamp, np.datetime64):
         ts = (unix_timestamp - np.datetime64('1970-01-01T00:00:00Z')) / np.timedelta64(1, 's')
         unix_datetime = unix_to_datetime(ts)
@@ -173,7 +172,7 @@ def unix_to_nt(unix_timestamp):
     return lowDateTime, highDateTime
 
 
-def unix_to_datetime(unix_timestamp, tz=pytz_utc):
+def unix_to_datetime(unix_timestamp, tz=datetime.UTC):
     '''
     :param unix_timestamp: Number of seconds since unix epoch (1/1/1970)
     :type unix_timestamp: float
@@ -191,15 +190,16 @@ def unix_to_datetime(unix_timestamp, tz=pytz_utc):
 
     if isinstance(unix_timestamp, datetime.datetime):
         if unix_timestamp.tzinfo is None:
-            unix_datetime = pytz_utc.localize(unix_timestamp)
+            #unix_datetime = pytz_utc.localize(unix_timestamp)
+            unix_datetime = unix_timestamp.replace(tzinfo=datetime.UTC)
 
-        elif unix_timestamp.tzinfo == pytz_utc:
+        elif unix_timestamp.tzinfo == datetime.UTC:
             unix_datetime = unix_timestamp
         else:
-            unix_datetime = pytz_utc.normalize(unix_timestamp.astimezone(pytz_utc))
+            unix_datetime = unix_timestamp.astimezone(datetime.UTC)
 
     elif isinstance(unix_timestamp, float):
-        unix_datetime = pytz_utc.localize(datetime.datetime.fromtimestamp(unix_timestamp))
+        unix_datetime = datetime.fromtimestamp(unix_timestamp, tz=datetime.UTC)
 
     else:
         errstr = 'Looking for a timestamp of type datetime.datetime or # of sec past unix epoch.\n'

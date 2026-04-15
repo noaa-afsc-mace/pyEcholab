@@ -30,7 +30,6 @@
 
 import numpy as np
 import xml.etree.ElementTree as ET
-import xml.etree.ElementTree as ET
 
 class calibration(object):
     """
@@ -123,7 +122,6 @@ class calibration(object):
                                 'Common/EnvironmentData/Acidity':'acidity',
                                 'CalibrationResults/Frequency':'frequency',
                                 'CalibrationResults/BeamWidthAlongship':'beam_width_alongship',
-                                'CalibrationResults/BeamWidthAthwartship':'angle_offset_alongship',
                                 'CalibrationResults/BeamWidthAthwartship':'beam_width_athwartship',
                                 'CalibrationResults/AngleOffsetAthwartship':'angle_offset_athwartship',
                                 'CalibrationResults/AngleOffsetAlongship':'angle_offset_alongship',
@@ -461,15 +459,13 @@ class calibration(object):
 
         setattr(self, 'channel_name', root.find('./Calibration/Common/Transceiver/ChannelName').text)
 
-    
-
             
     def get_attribute_from_raw(self, raw_data, param_name, return_indices=None):
         """get_attribute_from_raw gets an individual attribute using the data
         within the provided raw_data object.
         """
         param_data = None
-
+        
         # If we're not given specific indices, grab everything.
         if return_indices is None:
             return_indices = np.arange(raw_data.ping_time.shape[0])

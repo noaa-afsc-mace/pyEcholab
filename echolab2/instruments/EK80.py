@@ -162,6 +162,8 @@ class EK80(object):
         self.read_end_ping = None
         self.read_start_sample = None
         self.read_end_sample = None
+        self.read_time_array = None
+        self.read_ping_array = None
 
         # read_frequencies can be set to a list of floats specifying the
         # frequencies to read. An empty list will result in all frequencies
@@ -449,7 +451,7 @@ class EK80(object):
                  start_ping=None, end_ping=None, frequencies=None,
                  channel_ids=None, incremental=None, start_sample=None,
                  end_sample=None, progress_callback=None, nmea=True,
-                 callback_ref=None):
+                 callback_ref=None, time_array=None):
         """Reads one or more Simrad EK80 .raw files and appends the data to any
         existing data. The data are ordered as read.
 
@@ -465,9 +467,14 @@ class EK80(object):
                 if your data of interest is less than the total number of
                 samples contained in the instrument files.
             start_time (datetime64): Specify a start time if you do not want
-                to start reading from the first ping.
+                to start reading from the first ping in the file.
             end_time (datetime64): Specify an end time if you do not want to read
-                to the last ping.
+                to the last ping in the file.
+            time_array (list/ndarray of datetime64): Specify specific ping times
+                to read as an list or array of datetime64 objects. Ping times
+                that match a time in the array are stored. All other pings are
+                ignored. Note that because a time range is not specified, all
+                NMEA data will be read from the file. 
             start_ping (int): Specify starting ping number if you do not want
                 to start reading at first ping.
             end_ping (int): Specify end ping number if you do not want
@@ -509,6 +516,14 @@ class EK80(object):
             if not isinstance(end_time, np.datetime64):
                 raise TypeError("end_time must be an instance of numpy.datetime64")
             self.read_end_time = end_time
+        if time_array is not None:
+            if len(time_array) > 0:
+                if not (isinstance(time_array, np.ndarray) or isinstance(time_array, list)):
+                    raise TypeError("time_array must be an instance of numpy.ndarray or list")
+                else:
+                    if not isinstance(time_array[0], np.datetime64):
+                        raise TypeError("time_array must be an list/array of numpy.datetime64")
+            self.read_time_array = start_time
         if start_ping:
             self.read_start_ping = start_ping
         if end_ping:
@@ -542,6 +557,7 @@ class EK80(object):
             self._tx_params = {}
             self._environment = {}
             self._ping_sequence = None
+            self._global_ping_sequence = None
             self._sensor_datagram = None
             self._initial_params = {}
             self._file_channel_number_map = {}
@@ -620,7 +636,7 @@ class EK80(object):
                         #  call the provided callback - the callback has 3 args,
                         #  the first is the full path to the current file and the
                         #  second is the percent read and the third is the bytes read
-                        #  and the last is a generic reference that can be set bu the
+                        #  and the last is a generic reference that can be set by the
                         #  caller.
                         progress_callback(filename, cumulative_pct, cumulative_bytes,
                                 callback_ref)
@@ -809,7 +825,7 @@ class EK80(object):
             # This datagram has NULL date/time values
             dgram_header['timestamp'] = np.datetime64("NaT")
         else:
-            # We have a plausible date/time value
+            # We have a plausible date/time value - convert it to dattime64 with ms precision
             dgram_header['timestamp'] = \
                     np.datetime64(dgram_header['timestamp'], '[ms]')
 
@@ -828,22 +844,35 @@ class EK80(object):
                 fid.skip(header=dgram_header)
                 return result
 
-            #  update the ping counter
+            #  check if we're past the read end time
+            if self.read_end_time is not None:
+                if dgram_header['timestamp'] > self.read_end_time:
+                    #  we have a end time and this data comes after it
+                    #  so we are actually done reading - set the finished
+                    #  field in our return dict and return
+                    result['finished'] = True
+                    return result
+
+            #  if this is a raw datagram, we check if we're reading this specific
+            #  ping and if so, increment the ping counter.
             if dgram_header['type'].startswith('RAW'):
+                #  if we're provided a time array we check if this ping time is 
+                #  in that array
+                if self.read_time_array is not None:
+                    if dgram_header['timestamp'] not in self.read_time_array:
+                        #  an array of ping times to read has been provided and
+                        #  this ping is not in it, move along.
+                        fid.skip(header=dgram_header)
+                        return result
+                
                 if self._this_ping_time != dgram_header['timestamp']:
                     self.n_pings += 1
                     self._this_ping_time = dgram_header['timestamp']
 
-            # Check if data should be stored based on time bounds.
-            if self.read_start_time is not None:
-                if dgram_header['timestamp'] < self.read_start_time:
-                    #  we have a start time and this data comes before it
-                    #  so we skip the rest of the datagram and return
-                    fid.skip(header=dgram_header)
-                    return result
-            if self.read_end_time is not None:
-                if dgram_header['timestamp'] > self.read_end_time:
-                    #  we have a end time and this data comes after it
+            #  after updating ping count, check if we're past the end ping
+            if self.read_end_ping is not None:
+                if self.n_pings > self.read_end_ping:
+                    #  we have a end ping and this data comes after it
                     #  so we are actually done reading - set the finished
                     #  field in our return dict and return
                     result['finished'] = True
@@ -856,14 +885,15 @@ class EK80(object):
                     #  so we skip the rest of the datagram and return
                     fid.skip(header=dgram_header)
                     return result
-            if self.read_end_ping is not None:
-                if self.n_pings > self.read_end_ping:
-                    #  we have a end ping and this data comes after it
-                    #  so we are actually done reading - set the finished
-                    #  field in our return dict and return
-                    result['finished'] = True
-                    return result
 
+            # Check if data should be stored based on time bounds.
+            if self.read_start_time is not None:
+                if dgram_header['timestamp'] < self.read_start_time:
+                    #  we have a start time and this data comes before it
+                    #  so we skip the rest of the datagram and return
+                    fid.skip(header=dgram_header)
+                    return result
+            
             # Update the end_time property.
             if self.end_time is not None:
                 # We can't assume data will be read in time order.
@@ -873,10 +903,12 @@ class EK80(object):
                 self.end_time = dgram_header['timestamp']
 
         # If we're here, we're reading the datagram. Calling read while passing the header will
-        # re-parse the header so we'll replace the timestamp with the previously parsed and converted value.
+        # result in re-parsing the header values so replace the timestamp with the previously
+        # parsed and converted value.
         try:
             #  pass the datagram header and read the rest of the datagram
             new_datagram = fid.read(1, header=dgram_header)
+            #  restore the previously converted to datetime64 timestamp
             new_datagram['timestamp'] = dgram_header['timestamp']
         except SimradEOF:
             #  we're at the end of the file
@@ -923,8 +955,8 @@ class EK80(object):
             elif new_datagram['subtype'] == 'globalpingsequence':
                 # The GlobalPingSequence datagram seems to come near the beginning
                 # of the file and contain the overall sequencing
-                #self._ping_sequence = new_datagram[new_datagram['subtype']]
-                print(new_datagram)
+                self._global_ping_sequence = new_datagram[new_datagram['subtype']]
+                #print(new_datagram)
 
             elif new_datagram['subtype'] == 'sensor':
                 # The Sensor datagram contains information about cable length for external
@@ -1314,9 +1346,9 @@ class EK80(object):
         functionally the same but contain fewer characters.
 
         The goal is to produce files that are functionally identical and are replayable
-        within the EK80 application but this method will not automatically add missing
-        datagrams to a file. If you read a file with an older format that will not play
-        in a current version of EK80, writing a copy will not make it compatible.
+        within the EK80 application. Note that this method will not automatically add
+        missing datagrams to a file. If you read a file with an older format that will
+        not play in a current version of EK80, writing a copy will not make it compatible.
 
         Args:
             output_filenames (str, dict): A string specifying the full path and
@@ -1325,7 +1357,7 @@ class EK80(object):
                 values specify the full path and *full* output filename that will
                 be used when writing data associated with that input file.
 
-                Providing a string will result in behavior similar to ER60 software
+                Providing a string will result in behavior similar to EK80 software
                 where you provide the folder and filename header and it generates
                 data in that folder naming the files with the header and appending
                 the date and time:
@@ -1425,11 +1457,23 @@ class EK80(object):
             data. This can allow you to easily write subsets of data where the
             pings do not have to be contiguous.
 
-            raw_index_array (dict): Set this to a dictionary, keyed by
-                raw_data object reference, where the values are index arrays that
+            raw_index_array (dict): Set this to a dictionary, keyed by raw_data
+                object reference, where the values are index arrays that
                 specify the pings to write for each raw_data object. If you specify
                 this keyword, the start/stop time/ping and time_order keywords will
                 be ignored.
+
+                The index arrays can be arrays of ping indicies of length n-pings
+                to write, OR they can be boolean arrays the same length as your
+                data arrays where True elements will be written and False elements
+                skipped.
+
+                It is also legal to pass a single index array (i.e. not a dict of
+                index arrays) and that single index array will be used for all
+                channels. If you do this, it is your responsibility to ensure the
+                index is valid across channels either in length, if you pass a
+                boolean index, or that all index values are within range if you
+                pass a true index array.
 
             THE FOLLOWING KEYWORDS ARE NOT IMPLEMENTED YET
 
@@ -1710,7 +1754,7 @@ class EK80(object):
             for channel in data_by_file[infile]:
                 for data in data_by_file[infile][channel]:
                     # First, remove any empty pings from the index.
-                    data['index'] = data['index'][np.isfinite(data['data'].channel_mode[data['index']])]
+                    data['index'] = data['index'][np.isfinite(data['data'].sample_interval[data['index']])]
                     # Then extract the times and references to the data we're writing
                     times = data['data'].ping_time[data['index']]
                     dg_times = np.concatenate((dg_times, times))
@@ -1734,7 +1778,7 @@ class EK80(object):
                             environment_data.append(data['data'].environment[idx])
                             environment_ids.append(id(data['data'].environment[idx]))
                         else:
-                            time_idx = environment_data.index(data['data'].environment[idx])
+                            time_idx = environment_ids.index(id(data['data'].environment[idx]))
                             this_time = data['data'].ping_time[idx] - np.timedelta64(1, 'ms')
                             if environment_times[time_idx] > this_time:
                                 environment_times[time_idx] = this_time
@@ -2005,21 +2049,23 @@ class EK80(object):
                         # Determine the precision we'll use to write the data
                         if reduce_complex_precision:
                             # reduced complex
-                            complex_dtype = np.float16
+                            dgram['complex_dtype'] = np.float16
                             datatype = datatype | (1 << 2)
                         else:
                             # non-reduced complex
-                            complex_dtype = dg_objects[idx].file_complex_dtype
+                            dgram['complex_dtype'] = dg_objects[idx].file_complex_dtype
                             datatype = datatype | (1 << 3)
 
                         # Set the number of complex samples in the datatype
                         n_complex = complex_data.shape[1]
                         datatype = datatype | (n_complex << 8)
 
+                        # RHT 8-27-25 - This code was moved to simrad_parsers to make the to_string
+                        # and from_string raw datagram parser IO internally consistent.
                         # Now pack the complex data - use a view to transform complex64
                         # to the output type. Reshape to interleave sample data.
-                        dgram['complex'] = complex_data.view(complex_dtype)
-                        dgram['complex'].shape = (dgram['count'] * 2 * n_complex)
+                        #dgram['complex'] = complex_data.view(dgram['complex_dtype'])
+                        #dgram['complex'].shape = (dgram['count'] * 2 * n_complex)
 
                     # Set the datatype
                     dgram['data_type'] = datatype
@@ -3246,25 +3292,27 @@ class raw_data(ping_data):
 
         def compute_absorption_fm(data, f_m):
 
-            def alphaFG(c, pH, T, D, S,f): # requires sound speed (m/s), pH, temp(C), depth(m), salinity(ppt), and nominal frequency(kHz)
-                    # Attenuation Coefficient is based on Francois and Garrison, 1982 - "Sound absorption based on ocean measurements.
-                    # Boric Acid Contribution, P1 = 1. This is buried in echolab.simrad_calibration and I can't figure out how to apply to the
-                    # full range of frequencies and not the nominal frequency parameter in the raw data
-                    A1=((8.86/c)*(10**(0.78*pH-5)))
-                    f1=((2.8*((S/35)**0.5))*(10**(4-(1245/(T+273)))))
-                    # MgSO4 Contribution
-                    A2=((21.44*(S/c))*(1+(0.025*T)))
-                    P2=(1-(1.37*(10**-4)*D)+(6.2*(10**-9)*(D**2)))
-                    f2=((8.17*(10**(8-(1990/(T+273)))))/(1+.0018*(S-35)))
-                    # Pure water contribution, where A3 is temperature dependent
-                    if T > 20:
-                        A3=((3.964*(10**-4))-(1.146*(10**-5)*T)+(1.45*(10**-7)*(T**2))-(6.5*(10**-10)*(T**3)))
-                    else:
-                        A3=((4.937*(10**-4))-(2.59*(10**-5)*T)+(9.11*(10**-7)*(T**2))-(1.5*(10**-8)*(T**3)))
-                    P3=((1-(3.83*(10**-5)*D)) + (4.9*(10**-10)*(D**2)))
-                    # Calculate and return Alpha
-                    alpha = (((f**2)*A1*f1)/(((f1**2)) + (f**2)))+ ((A2*P2*f2*(f**2))/((f2**2) + (f**2))) + (A3*P3*(f**2))
-                    return alpha
+            def alphaFG(c, pH, T, D, S,f):
+                '''
+                requires sound speed (m/s), pH, temp(C), depth(m), salinity(ppt), and nominal frequency(kHz)
+                Attenuation Coefficient is based on Francois and Garrison, 1982 - "Sound absorption based on ocean measurements.
+                Boric Acid Contribution, P1 = 1. 
+                '''
+                A1=((8.86/c)*(10**(0.78*pH-5)))
+                f1=((2.8*((S/35)**0.5))*(10**(4-(1245/(T+273)))))
+                # MgSO4 Contribution
+                A2=((21.44*(S/c))*(1+(0.025*T)))
+                P2=(1-(1.37*(10**-4)*D)+(6.2*(10**-9)*(D**2)))
+                f2=((8.17*(10**(8-(1990/(T+273)))))/(1+.0018*(S-35)))
+                # Pure water contribution, where A3 is temperature dependent
+                if T > 20:
+                    A3=((3.964*(10**-4))-(1.146*(10**-5)*T)+(1.45*(10**-7)*(T**2))-(6.5*(10**-10)*(T**3)))
+                else:
+                    A3=((4.937*(10**-4))-(2.59*(10**-5)*T)+(9.11*(10**-7)*(T**2))-(1.5*(10**-8)*(T**3)))
+                P3=((1-(3.83*(10**-5)*D)) + (4.9*(10**-10)*(D**2)))
+                # Calculate and return Alpha
+                alpha = (((f**2)*A1*f1)/(((f1**2)) + (f**2)))+ ((A2*P2*f2*(f**2))/((f2**2) + (f**2))) + (A3*P3*(f**2))
+                return alpha
 
             env = data.environment[data.environment != np.array(None)][0]
             alpha_fm = np.array([alphaFG(env['sound_speed'],env['acidity'],env['temperature'],env['depth'],env['salinity'],nomf/1000)/1000 for nomf in f_m])
@@ -3289,7 +3337,14 @@ class raw_data(ping_data):
             float
                     Psi at frequency `f_m` [sr]
             """
-            return psi_f_n * (f_n / f_m) ** 2
+            #  for now we are assuming that EBA is constant within your raw data.
+            #  This is true within a single raw file, but not always between files
+            #  so it is recommended that you convert raw files one at a time and
+            #  combine as processed data if you need to combine calibrated data.
+            if psi_f_n.size > 1:
+                return psi_f_n[0] * (f_n / f_m) ** 2
+            else:
+                return psi_f_n * (f_n / f_m) ** 2
 
         def get_range_vector(data):
             """
@@ -3302,27 +3357,34 @@ class raw_data(ping_data):
             range[0] = 1e-20
 
             return range
+            
 
         if frequency_resolution is None:
             setattr(calibration, 'frequency_fft', calibration.frequency)
             setattr(calibration, 'gain_fft', calibration.gain)
         else:
-            setattr(calibration, 'frequency_fft', np.arange(calibration.frequency_start,calibration.frequency_end+1,frequency_resolution))
-            setattr(calibration,'gain_fft',np.interp(np.arange(calibration.frequency_start, calibration.frequency_end+1, frequency_resolution),
-                                            calibration.frequency,calibration.gain))
+            setattr(calibration, 'frequency_fft', np.arange(calibration.frequency_start,
+                    calibration.frequency_end+1,frequency_resolution))
+            setattr(calibration,'gain_fft',np.interp(np.arange(calibration.frequency_start,
+                    calibration.frequency_end+1, frequency_resolution),
+                    calibration.frequency, calibration.gain))
 
         if analysis_band is not None:
             if isinstance(analysis_band, (int, float)):
-                min_fft = ((calibration.frequency[-1]+calibration.frequency[0])/2)-(calibration.frequency[-1]-calibration.frequency[0])*(analysis_band/2)
-                max_fft = ((calibration.frequency[-1]+calibration.frequency[0])/2)+(calibration.frequency[-1]-calibration.frequency[0])*(analysis_band/2)
+                min_fft = (((calibration.frequency[-1]+calibration.frequency[0])/2) -
+                        (calibration.frequency[-1]-calibration.frequency[0])*(analysis_band/2))
+                max_fft = (((calibration.frequency[-1]+calibration.frequency[0])/2) +
+                        (calibration.frequency[-1]-calibration.frequency[0])*(analysis_band/2))
             elif isinstance(analysis_band, tuple):
                 min_fft = analysis_band[0]
                 max_fft = analysis_band[1]
 
-            setattr(calibration, 'frequency_fft', calibration.frequency_fft[np.where((calibration.frequency_fft>min_fft)&(calibration.frequency_fft<max_fft))[0]])
-            setattr(calibration, 'gain_fft',calibration.gain_fft[np.where((calibration.frequency_fft>min_fft)&(calibration.frequency_fft<max_fft))[0]])
+            if min_fft != max_fft:
+                in_band = (calibration.frequency_fft >= min_fft) & (calibration.frequency_fft <= max_fft)
+                setattr(calibration, 'frequency_fft', calibration.frequency_fft[np.where(in_band)[0]])
+                setattr(calibration, 'gain_fft',calibration.gain_fft[np.where(in_band)[0]])
 
-                # Get the sector averaged complex data
+        # Get the sector averaged complex data
         p_data, return_indices = self._get_complex(calibration=calibration,
                 return_depth=False, clear_cache=False, linear=True)
 
@@ -3365,22 +3427,19 @@ class raw_data(ping_data):
                     P_rx_e_t_m_n, alpha_m, self.transmit_power[ping_no], lambda_m, t_w[ping_no], psi_m, g_m, calibration.sound_speed, svf_range)
             svf_data.append(Sv_m_n)
 
-        # Set the data attribute in the processed_data object. This is the generic
-        # label we use within pyEcholab to access data within processed data objects.
+        # Set the data attribute in the processed_data object.
         p_data.data = np.transpose(np.array(svf_data),(2,0,1))
+        p_data.is_log = True
 
         if linear:
             p_data.data = 10**(p_data.data / 10.0)
             p_data.is_log = False
 
-        # Also create an attribute named after the data type that points to our data.
-        # Some people think their code is more readable when they use the this label.
+
         setattr(p_data, 'n_samples', len(Sv_m_n))
         setattr(p_data, 'sample_thickness', svf_range[1]-svf_range[0])
         setattr(p_data, 'range', svf_range)
-
-        p_data.is_log = True
-        setattr(p_data, 'frequency', calibration.frequency_fft)\
+        setattr(p_data, 'frequency', calibration.frequency_fft)
 
         cal_parms = {'gain':calibration.gain_fft,
                      'transmit_power':calibration.transmit_power,
@@ -4884,7 +4943,7 @@ class raw_data(ping_data):
                 self.complex.fill(np.nan)
 
 
-    def match_pings(self, other_data, match_to='cs'):
+    def match_pings(self, other_data, **kwargs):
         """Matches the ping times in this object to the ping times in the EK80.raw_data
         object provided. It does this by matching times, inserting and/or deleting
         pings as needed. It does not interpolate. Ping times in the other object
@@ -4898,17 +4957,34 @@ class raw_data(ping_data):
             other_data (ping_data): A ping_data type object that this object
             will be matched to.
 
-            match_to (str): Set to a string defining the precision of the match.
+                        match_to (str): Set to a string defining the precision of the match.
+            A lower precision allows matching in cases where there is a slight
+            time difference between the two data sources.
 
                 cs : Match to a 100th of a second
                 ds : Match to a 10th of a second
                 s  : Match to the second
 
+                Default: 'cs'
+
+            insert_only (bool): Set to True to only insert pings into this object
+            that aren't in the other object. Pings in this object that aren't in
+            the other object will not be removed.
+
+                Default: False
+
+            remove_only (bool): Set to True to only remove pings in this object
+            that aren't in the other object. Pings in the other object that aren't
+            in this object will not be inserted. This is useful when you want to
+            re-write raw data after matching pings.
+
+                Default: False
+
         Returns:
             A dictionary with the keys 'inserted' and 'removed' containing the
             indices of the pings inserted and removed.
         """
-        return super(raw_data, self).match_pings(other_data, match_to='cs')
+        return super(raw_data, self).match_pings(other_data, **kwargs)
 
 
     def __str__(self):
@@ -5133,6 +5209,10 @@ class ek80_calibration(calibration):
             if param_data is None or np.isnan(param_data):
                 param_data = self.default_acidity
 
+        
+        elif param_name == 'frequency':
+            param_data = raw_data.get_frequency()
+
         # older file formats also lack rx_sample_frequency
         elif param_name == 'rx_sample_frequency':
             #  create the return array
@@ -5312,7 +5392,11 @@ class ek80_calibration(calibration):
             param_data = self._compute_absorption(raw_data,
                 return_indices, self.absorption_method)
 
-
+#        if param_data.size > 1:
+#            if np.all(np.isclose(param_data, param_data[0])):
+#                # This param is constant
+#                param_data = param_data[0]
+            
         return param_data
 
 

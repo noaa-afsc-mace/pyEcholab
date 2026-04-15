@@ -96,7 +96,14 @@ def get_xyz_filenames(basename, data_object, raw_index=0):
         #  check for a MUX/Sequence ID
         mux_id = channel_id.split('_')
         if len(mux_id) > 1:
-            mux_id = mux_id[1]
+            #  at some point after EK80 v1.12.4.0 (March 2020) the channel ID format changed.
+            #  For files recorded in later versions, channel IDs for non multiplexed channels
+            #  have "ES" appended to the channel name. This is not carried over to the xyz
+            #  file names so we will check for "ES" here and ignore it if present.
+            if mux_id[1] != 'ES':
+                mux_id = mux_id[1]
+            else:
+                mux_id = ''
         else:
             mux_id = ''
 

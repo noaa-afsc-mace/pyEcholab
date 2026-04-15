@@ -62,6 +62,8 @@ class motion_data(object):
         self.pitch = np.empty(motion_data.CHUNK_SIZE, dtype='f')
         self.roll = np.empty(motion_data.CHUNK_SIZE, dtype='f')
         self.heading = np.empty(motion_data.CHUNK_SIZE, dtype='f')
+        
+        self._data_attributes = ['times','heave','pitch','roll','heading']
 
 
     def add_datagram(self, datagram):
@@ -153,6 +155,10 @@ class motion_data(object):
 
         Returns a dictionary of numpy arrays keyed by attribute name that contain the
         interpolated data for that attribute.
+        
+        NOTE: This method's API should probably be made to match nmea_data's interpolate
+              API (return time, allow for metatypes) but higher level methods do handle the
+              differences so most users will not have to deal with this.
         """
         # Create the dictionary to return
         out_data = {}
@@ -339,6 +345,14 @@ class motion_data(object):
         self.delayed_heave_utc_nanoseconds = np.full(self.times.size, 0, dtype='i4')
         self.delayed_heave_m = np.full(self.times.size, np.nan, dtype='f')
 
+        #  update the data attributes for the extended MRU attributes
+        self._data_attributes += ['status','latitude','longitude','ellipsoid_height','roll_rate',
+                                  'pitch_rate','yaw_rate','north_velocity','east_velocity','down_velocity',
+                                  'latitude_error','longitude_error','height_error','roll_error',
+                                  'pitch_error','heading_error','heave_error','north_acceleration',
+                                  'east_acceleration','down_acceleration','delayed_heave_utc_second',
+                                  'delayed_heave_utc_nanoseconds','delayed_heave_m']
+
         #  set the has_MRU1 attribute since we now have MRU1 data
         self.has_MRU1 = True
 
@@ -359,6 +373,29 @@ class motion_data(object):
             msg = "{0}         MRU data end time: {1}\n".format(msg, self.times[self.n_raw-1])
             msg = "{0}       Number of datagrams: {1}\n".format(msg, self.n_raw)
             msg = "{0}  Has extended motion data: {1}\n".format(msg, self.has_MRU1)
+        
+            msg = msg + "         object attributes:"
+            n_attr = 0
+            padding = " "
+            for attr_name in self._data_attributes:
+                #  skip printing the generic data reference
+                if attr_name in ['data']:
+                    continue
+                attr = getattr(self, attr_name)
+                if n_attr > 0:
+                    padding = "                            "
+                if isinstance(attr, np.ndarray):
+                    if attr.ndim == 1:
+                        msg = msg + padding + attr_name + " (%u)\n" % (
+                            attr.shape[0])
+                    else:
+                        msg = msg + padding + attr_name + " (%u,%u)\n" % (
+                            attr.shape[0], attr.shape[1])
+                elif isinstance(attr, list):
+                        msg = msg + padding + attr_name + " (%u)\n" % (len(
+                            attr))
+                n_attr += 1
+        
         else:
             msg = msg + ("  motion_data object contains no data\n")
 

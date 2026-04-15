@@ -1166,17 +1166,17 @@ class SimradXMLParser(_SimradDatagramParser):
                     parm_xml = h.attrib
                     data['pingsequence']['ping'].append(parm_xml['ChannelID'])
 
-#            elif data['subtype'] == 'globalpingsequence':
+            elif data['subtype'] == 'globalpingsequence':
                 #  as far as I can tell, GlobalPingSequence appears once near the beginning
                 #  of the file and contains the details of the ping sequencing setup
 #
 #                print(xml_string.decode('utf-8'))
 
                 #  parse the pingsequence XML datagram
-#                data['globalpingsequence'] = {}
+                data['globalpingsequence'] = xml_string.decode('utf-8')
 #                for h in root_node.iter('Ping'):
 #                    parm_xml = h.attrib
-#                    data['pingsequence'].append(parm_xml['ChannelID'])
+#                    data['globalpingsequence'].append(parm_xml['ChannelID'])
 
             elif data['subtype'] == 'parameter':
 
@@ -2170,13 +2170,17 @@ class SimradRawParser(_SimradDatagramParser):
                     datagram_contents.extend(data['angle'])
 
                 if data['data_type'] & 0b1100:
-                    # Add the complex data
+                    # Add the complex data. First transform from complex dtype to interleaved floats.
+                    n_complex = data['complex'].shape[1]
+                    data['complex'] = data['complex'].view(data['complex_dtype'])
+                    data['complex'].shape = (data['count'] * 2 * n_complex)
+
+                    # Now pack as bytes
                     if data['data_type'] & 0b0100:
-                        # pack as 16 bit floats - struct doesn't have support for
-                        # half floats so we use just pack them as bytes.
+                        # pack 16 bit floats as bytes
                         datagram_fmt += '%dB' % (data['complex'].shape[0] * 2)
                     else:
-                        # pack as 32 bit floats
+                        # pack 32 bit floats as bytes
                         datagram_fmt += '%dB' % (data['complex'].shape[0] * 4)
                     datagram_contents.extend(data['complex'].view(np.ubyte))
 
