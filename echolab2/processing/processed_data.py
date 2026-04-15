@@ -30,14 +30,13 @@
 """
 
 import copy
-from future.utils import implements_iterator
+from unicodedata import name
 import numpy as np
 from scipy import sparse
 from ..ping_data import ping_data
-from ..processing import mask
+from ..processing import mask, line
 
 
-@implements_iterator
 class processed_data(ping_data):
     """The processed_data class defines the horizontal and vertical axes of
     the data.
@@ -845,6 +844,113 @@ class processed_data(ping_data):
         self.is_log = True
 
 
+
+
+    def resample_by_axes(self, v_height, h_length, v_axis='range', h_axis='ping_number',
+            method='area_weighted'):
+        """resample_by_axes resamples pings in both vertical and/or along track dimensions.
+       
+        Resampling is done by conservative regridding, or area weighted averaging.
+       
+        Args:
+            v_height (int, float, None): Specify the vertical height of the new samples in 
+            the specified axis units. If depth or range are specified, the units are meters.
+            If sample is specified, the units are sample numbers. Set to None, the vertical
+            axis is not resampled.
+
+            h_length (int, float, timestamp64, None): Specify the horizontal extent of the 
+            new samples in the specified axis units. If ping_number is specified, the units
+            are pings. If ping_time is specified, the units are time in datetime64 format.
+            If h_axis is specified as trip_distance_m, the units are meters and for
+            trip_distance_nmi the units are nautical miles. If set to None, the horizontal
+            axis is not resampled.
+
+            v_axis (str): Set to a string specifying the vertical axis to use when
+            resampling.
+            
+                'range':  
+                'depth':
+                'sample':
+
+                Default: range
+
+            h_axis (str): Set to a string specifying the horizontal axis to use when
+            resampling.
+            
+                'ping_number':  
+                'ping_time':
+                'trip_distance_m':
+                'trip_distance_nmi'
+
+                Default: ping_number
+
+            method (str): Set to a string specifying the method to use when resampling. Options
+            are:
+                'area_weighted': Samples that are only partially covered by the new grid will be
+                weighted according to the fraction of the sample that is covered. This is also
+                known as conservative regridding and is the default method.
+
+                'center_weighted': Samples that are only partially covered by the new grid will be
+                weighted as 1 if the center of the sample is covered and 0 if it is not.
+
+                Default: 'area_weighted'
+
+
+        """
+
+        # First convert to linear space if we are in log space. We will convert back
+        # to log space after resampling.
+        if self.is_log:
+            data_is_log = True
+            self.to_linear()
+        else:
+            data_is_log = False
+
+        super().resample_by_axes(v_height, h_length, v_axis=v_axis, h_axis=h_axis, method=method)
+
+        if data_is_log:
+            self.to_log()
+
+        # Handle "resampling" of non numpy attributes here. 
+        for attr_name in self._data_attributes:
+
+            # Get the attribute data
+            attr_data = getattr(self, attr_name)
+            
+            #  check if this is a line object and if so, resample it to match the new horizontal dimensions.
+            if isinstance(attr_data, line.line):
+                if h_length is not None:
+                    #  resample the line data to match the new horizontal dimensions
+                    attr_data.interpolate(self.ping_time)
+
+
+    def brute_force_resample(self, v_height, h_length, v_axis='range', h_axis='ping_number'):
+
+        # First convert to linear space if we are in log space. We will convert back
+        # to log space after resampling.
+        if self.is_log:
+            data_is_log = True
+            self.to_linear()
+        else:
+            data_is_log = False
+
+        super().brute_force_resample(v_height, h_length, v_axis=v_axis, h_axis=h_axis)
+
+        if data_is_log:
+            self.to_log()
+            
+        # Handle "resampling" of non numpy attributes here. 
+        for attr_name in self._data_attributes:
+
+            # Get the attribute data
+            attr_data = getattr(self, attr_name)
+            
+            #  check if this is a line object and if so, resample it to match the new horizontal dimensions.
+            if isinstance(attr_data, line.line):
+                if h_length is not None:
+                    #  resample the line data to match the new horizontal dimensions
+                    attr_data.interpolate(self.ping_time)
+
     def match_samples(self, other_obj, _return_data=False):
         '''match_samples adjusts the vertical axis of this object to match the vertical
         axis of the provided processed_data object. This method is similar to the Echoview
@@ -1410,6 +1516,77 @@ class processed_data(ping_data):
                 self.data[i][sample_mask] = other_data
         else:
             self.data[sample_mask] = other_data
+
+
+    def add_data_attribute(self, name, data):
+        """Adds a "data attribute" to the class.
+
+        Data attributes are attributes that are linked to one of the data
+        axes. Data attributes are resized when the data arrays are resized.
+
+        This method handles adding objects based on echolab2.ping_data which
+        are not handled by the parent class. Attributes that are not a child
+        of ping_data are passed to the parent method.
+
+        Args:
+            name (str): The attribute name to be added to the class.
+            data (array): A numpy array, line, or mask object containing the
+                data you ara adding as an attribute.
+
+        Raises:
+            ValueError: The attribute has a different number of samples than
+                the other attributes.
+            TypeError: The attribute is not a numpy array, line, or mask.
+            ValueError: The attribute has a different number of pings than
+                the other attributes.
+        """
+        # Get the new data's dimensions.
+        data_height = -1
+        
+        #  if this is not a numpy array, handle it here
+        if not isinstance(data, np.ndarray):
+            if isinstance(data, line.line):
+                #  this is an echolab2.processing.line object
+                data_width = data.data.shape[0]
+            elif isinstance(data, mask.mask):
+                #  this is an echolab2.processing.line object
+                data_width = data.mask.shape[0]
+                
+                if data.mask.ndim == 1:
+                    data_width = data.mask.shape[0]
+                if data.ndim > 1:
+                    data_width = data.mask.shape[0]
+                    data_height = data.mask.shape[1]
+                    # Check if n_samples has been set yet.  If not, set it.
+                    # Otherwise, check that the dimensions match.
+                    if self.n_samples < 0:
+                        self.n_samples = data_height
+                    elif self.n_samples != data_height:
+                        raise ValueError('Cannot add attribute. New attribute has ' +
+                            'a different number of samples than the existing attributes.')
+                
+            # Check if n_pings has been set yet.  If not, set it.  Otherwise,
+            # check that the dimensions match.  When checking if dimensions
+            # match, we allow a match on the number of pings OR the number of
+            # samples since a 1d data attribute can be on either axis.
+            if self.n_pings < 0:
+                self.n_pings = data_width
+            elif self.n_pings != data_width and self.n_samples != data_width:
+                raise ValueError('Cannot add attribute. The new attribute has '
+                        'a different number of pings or samples than the existing attributes.')
+
+            # Add the name to our list of attributes if it doesn't already exist.
+            if name not in self._data_attributes:
+                self._data_attributes.append(name)
+
+            # Add or update ourself.
+            setattr(self, name, data)
+
+            #  update the shape attribute
+            self.shape = self._shape()
+        else:
+            #  this is a numpy array, call the parent method to add it
+            super(processed_data, self).add_data_attribute(name, data)
 
 
     def __iter__(self):
@@ -2416,7 +2593,7 @@ def read_ev_mat(channel_id, frequency, ev_mat_filename, data_type='Sv',
     #  create the range attribute - this is built on our sample
     #  thickness assumptions above.
     range = np.arange(0, max_samples, dtype=sample_dtype)
-    range = range * p_data.sample_thickness
+    range = range * p_data.sample_thickness + (p_data.sample_thickness / 2.0)
     p_data.add_data_attribute('range', range)
 
     if data_type in ['Sv', 'Sp', 'TS', 'power','Power']:
@@ -2548,14 +2725,14 @@ def read_ev_csv(channel_id, frequency, ev_csv_filename, data_type='Ts',
                 draft = convert_float(row[8]) - convert_float(row[10])
                 transducer_draft.fill(draft)
 
-                #  set sample thickness - we assume that the the first sample is
-                #  centered on 0,0 and the samples are on a fixed grid
-                p_data.sample_thickness = np.abs(convert_float(row[10])) * 2
+                #  set sample thickness - Compute as (range end - range start) / sample count
+                p_data.sample_thickness = ((convert_float(row[11]) - convert_float(row[10])) /
+                        convert_float(row[12]))
 
                 #  create the range attribute - this is built on our sample
                 #  thickness assumptions above.
                 range = np.arange(0, max_samples, dtype=sample_dtype)
-                range = range * p_data.sample_thickness
+                range = (range * p_data.sample_thickness) + (p_data.sample_thickness / 2.0)
                 p_data.add_data_attribute('range', range)
 
             p_data.trip_distance_nmi[idx] = convert_float(row[2])
@@ -2596,4 +2773,137 @@ def read_ev_csv(channel_id, frequency, ev_csv_filename, data_type='Ts',
 
     else:
 
+        return p_data
+
+def create_test_data(n_pings, n_samples, block_shape=(20,20), 
+        block_values=(-70,-30,-50,-90), data_type='Sv', frequency=38000, 
+        start_time=np.datetime64('2026-02-24T10:30'), ping_interval=np.timedelta64(1, 's'),
+        jitter_time=True, jitter_range=(0,250), sample_dtype=np.float32,
+        channel_id='pyEcholab Synthetic', draft=9.8, sample_thickness=0.035, range_start=1.0e-20,
+        fill_data_is_log=True, sample_interval=4.8e-05):
+    '''create_test_data creates a processed_data object containing the specified data
+    values as blocks of the specified size. You can create a number of different patterns
+    by changing the array size, block shape, and fill values. Only full blocks are filled
+    with a data value. If the array size is not evenly divisible by your block sizes, the
+    remaining samples will be filled with partial blocks.
+
+               n_pings(int):
+               n_samples(int):
+               block_shape (array of ints):
+    block_values(array): This array contains the values that are used to fill the blocks
+        start_time (datetime64): The starting ping time
+    ping_interval (timedelta64): a timedelta64 object representing the ping interval
+             jitter_time (book): set to True to jitter the ping time
+            jitter_range(tuple): Set to a tuple of value that represent the min and max
+                                 ping time jitter in milliseconds
+                  draft (float): Set this to the transducer draft
+       sample_thickness (float): Set this to the sample thickness in meters
+               channel_id (str): 
+              frequency (float): Set frequency to the frequency of the data.
+                data_type (str): Set this to a string specifying the export data type. The
+                                 data type can be:
+
+                                    Sv - sample Sv data
+                                    TS - sample TS data
+                                    angles - along and athwart angle data
+                                    power - sample power data
+
+    '''
+    def create_checkerboard_array(array_shape, block_shape, values, sample_dtype):
+        '''
+        create_checkerboard_array creates an numpy array of size array_shape
+        that contains blocks the size of block_shape that contain values specified
+        in the values array. Values are cycled when filling blocks. Providing a
+        single value will result in an array filled with that value. Providing
+        two values will create a checkerboard pattern. Beyond that, the results
+        depend on the array dimensions, block shape, and the number of values
+        provided. 
+
+        If the array shape is not evenly divisible by the block shape,
+        the remaining values will be filled with partial blocks. 
+        '''
+
+        # Create a grid of coordinates for the entire array
+        grid_r, grid_c = np.indices((array_shape[0], array_shape[1]))
+        
+        # Group coordinates into square blocks
+        sq_r_idx = grid_r // block_shape[0]
+        sq_c_idx = grid_c // block_shape[1]
+        
+        # Calculate which value index to use by summing block indices
+        val_indices = (sq_r_idx + sq_c_idx) % len(values)
+        
+        # Map the indices to the provided values
+        return np.array(values, dtype=sample_dtype)[val_indices]
+
+
+    def create_jittered_ping_times(start_time, n_elements, time_step,
+        jitter_time=True, jitter_range=(0,300), jitter_interval='ms'):
+        """
+        Creates a vector of datetime64 objects starting at the specified datetime64 start
+        time incrementing by the specified timedelta64 time_step, with optional random jitter
+        specified by the jitter range and jitter interval.
+        """
+        # create the base ping_time vector
+        steps = np.arange(n_elements) * time_step.astype('timedelta64[ms]')
+        
+        # add random jitter if applicable
+        if jitter_time:
+            # Generate random integers for each element
+            jitter_values = np.random.randint(jitter_range[0], jitter_range[1],
+                    size=n_elements)
+            # Convert integers to timedeltas and add to base
+            steps += jitter_values * np.timedelta64(1, jitter_interval).astype('timedelta64[ms]')
+
+        # create the output vector and return
+        ping_times = np.datetime64(start_time).astype('datetime64[ms]') + steps
+        return ping_times
+
+
+    # create an empty processed_data object
+    p_data = processed_data(channel_id, frequency, data_type)
+
+    # create the data array(s)
+    data = create_checkerboard_array((n_pings, n_samples), block_shape,
+            block_values, sample_dtype)
+    if data_type.lower() == 'angles':
+        athwart = create_checkerboard_array((n_pings, n_samples), block_shape,
+             block_values, sample_dtype)
+    p_data.add_data_attribute('data', data)
+
+    # create the ping_time array
+    ping_time = create_jittered_ping_times(start_time, n_pings, ping_interval,
+        jitter_time=jitter_time, jitter_range=jitter_range)
+    p_data.add_data_attribute('ping_time', ping_time)
+
+    # transducer draft
+    transducer_draft = np.full((n_pings), draft, dtype=sample_dtype)
+    p_data.add_data_attribute('transducer_draft', transducer_draft)
+
+    #  set sample thickness
+    p_data.sample_thickness = sample_thickness
+
+    #  create the range attribute
+    range = np.arange(0, n_samples, dtype=sample_dtype)
+    range = (range * p_data.sample_thickness) + (p_data.sample_thickness / 2.0)
+    range[0] = range_start
+    p_data.add_data_attribute('range', range)
+
+    # set some additional attributes
+    p_data.is_log = fill_data_is_log
+    p_data.n_samples = n_samples
+    p_data.n_pings = n_pings
+    p_data.shape = data.shape
+    p_data.sample_interval = sample_interval
+    p_data.sample_offset = 0
+
+    if data_type.lower()   == 'angles':
+        p_data_athwart = p_data.empty_like()
+        p_data_athwart.data = athwart
+        p_data_athwart.data_type = 'angles_athwartship'
+        p_data.is_log = False
+
+        p_data.data_type = 'angles_alongship'
+        return p_data, p_data_athwart
+    else:
         return p_data

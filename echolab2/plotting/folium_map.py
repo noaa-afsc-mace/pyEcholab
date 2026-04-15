@@ -1,20 +1,16 @@
 # -*- coding: utf-8 -*-
 """This is a simple interface for plotting basic maps using folium.
 
-This is a
+This is an example and not intended to be a fully functional class for
+building interactive maps.
 
 """
 
 
 import os
-import numpy as np
-#from geographiclib.geodesic import Geodesic
-#import branca.colormap
-#from branca.element import Element
 import webbrowser
 import folium
-from folium.features import DivIcon
-from folium.plugins import GroupedLayerControl, BeautifyIcon, MousePosition
+from folium.plugins import MousePosition
 
 class folium_map(object):
 
@@ -33,6 +29,7 @@ class folium_map(object):
         if min_zoom is None:
             min_zoom = 5
         if max_zoom is None:
+            #  max zoom based on tile server max zoom
             max_zoom = 13
         if initial_zoom is None:
             initial_zoom = 8
@@ -77,7 +74,7 @@ class folium_map(object):
 
     def render_map(self, file_name, open=False):
 
-
+        #  try to center the view on the data
         mapBounds = [[999,999],[-999,-999]]
         for fg in self.layers:
             thisBounds = fg.get_bounds()
@@ -92,7 +89,22 @@ class folium_map(object):
                     mapBounds[1][1] = thisBounds[1][1]
             except:
                 pass
+                
         if min(min(mapBounds)) > -999 and max(max(mapBounds)) < 999:
+            #  Folium has a minimum window size it will zoom to. I don't know if this is
+            #  related to the max zoom setting or not. In quick testing, it seemed not
+            #  to zoom to windows < 15 deg so if the element bounds are less than that
+            #  we find the center then expand the bounds by 7.5 deg in either direction.
+            
+            if mapBounds[1][0] - mapBounds[0][0] < 15:
+                c = (mapBounds[1][0] + mapBounds[0][0]) / 2.0
+                mapBounds[0][0] = c - 7.5
+                mapBounds[1][0] = c + 7.5
+            if mapBounds[1][1] - mapBounds[0][1] < 15:
+                c = (mapBounds[1][1] + mapBounds[0][1]) / 2.0
+                mapBounds[0][1] = c - 7.5
+                mapBounds[1][1] = c + 7.5
+            
             self.map.fit_bounds(mapBounds)
 
         #  add the position indicator

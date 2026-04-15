@@ -42,9 +42,6 @@
     can implement something more complex using the EK60 and/or EK80 objects
     directly.
 
-
-
-
 | Developed by:  Rick Towler   <rick.towler@noaa.gov>
 | National Oceanic and Atmospheric Administration (NOAA)
 | Alaska Fisheries Science Center (AFSC)
@@ -59,12 +56,13 @@ $Id$
 '''
 
 import os
+import copy
+import warnings
 from . import EK80
 from . import EK60
 from .util import simrad_utils
 import numpy as np
 from ..processing import mask, noise, line
-import copy
 
 
 SIMRAD_EK60 = 0
@@ -235,7 +233,7 @@ def read(files, ignore_errors=False, **kwargs):
         elif data_type == SIMRAD_EK60:
             #  Simrad EK60 systems do not generate XYZ files so we only check for .bot files
             _, bot_files = simrad_utils.get_simrad_bottom_files(filename, data_object,
-                skip_xyz=True)
+                    skip_xyz=True)
             if bot_files:
                 data_object.read_bot(bot_files)
 
@@ -406,7 +404,15 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None, apply_to
             xml_chan = cal.channel_name.split(' ')[0]+'_'+cal.channel_name.split('-')[-1]
         except:
             xml_chan = cal.channel_name.split(' ')[0]
-        chan  = [s for s in data_object.channel_ids if xml_chan in s][0]
+        chan  = [s for s in data_object.channel_ids if xml_chan in s]
+
+        # Check to see if this xml file matches a channel
+        if chan:
+            # It does
+            chan = chan[0]
+        else:
+            # It doesn't so we skip this file
+            continue
 
         # If the channel pulse form matches the pulse form of the data, add the calibration to the dictionary
         match = _compare_pulse(data_object.get_channel_data()[chan][0],cal)
@@ -423,7 +429,7 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None, apply_to
 
             # If there are multiple cals for the same channel, the variables from the calibration results tree are averaged
             if (len(calibrations[chan]) > 1):
-                print('Multiple calibrations for channel: ',chan)
+                warnings.warn('Multiple calibrations for channel: ' + chan + ' ::: Calibration parameters will be averaged as appropriate.')
 
                 # Create a new calibration object to store the merged calibration with the rest of the properties from the first calibration
                 merged_cal = calibrations[chan][0]
@@ -489,12 +495,13 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None, apply_to
             matching_channel = _find_matching_channel(data_object,chan)
 
             # If a matching channel is found, apply the calibration to the missing channel
-            if matching_channel is not None:
+            if matching_channel is not None and matching_channel in calibrations:
                 calibrations[chan] = calibrations[matching_channel]
 
     # Warn if there are channels in the data object that do not have a calibration
     for chan in  [s for s in data_object.channel_ids if s not in calibrations.keys()]:
-        print('Warning: No calibration found for channel: ',chan)
+        warnings.warn("No calibration found for channel: " + chan)
+
 
     return calibrations
 
@@ -1010,7 +1017,6 @@ def _get_processed_data(data_object, data_type, fm_frequency_domain=True, calibr
         #  check if we're returning this channel
         return_chan = _filter_channel(chan, raw_obj, channel_ids, frequencies, data_type)
 
-
         # if we are, get all of the data
         if return_chan:
             #  first, get a calibration object for this channel
@@ -1024,6 +1030,7 @@ def _get_processed_data(data_object, data_type, fm_frequency_domain=True, calibr
             else:
                 #  no cal provided - get one using the raw file parameters
                 cal_obj = raw_obj.get_calibration()
+                
             #  then get the data
             if data_type == 'Sv':
                 if raw_obj.is_fm() & fm_frequency_domain:
@@ -1086,8 +1093,8 @@ def _get_processed_data(data_object, data_type, fm_frequency_domain=True, calibr
                         if hasattr(p_data,'heave'):
                             bottom_line = bottom_line - p_data.heave
 
-                #  insert the bottom detection line into the processed data object
-                p_data.bottom_line = bottom_line
+                #  add the bottom detection line to the processed data object
+                p_data.add_data_attribute('bottom_line', bottom_line)
 
             #  and add the data to our return dict
             data[chan] = p_data
@@ -1169,13 +1176,15 @@ def _find_matching_channel(data_obj,channel_id): # update to deal with either ra
                 if obj_type == 'processed':
                     all_match = _compare_pulse(data_obj[channel_id],data_obj[ch],raw=False)
                 elif obj_type == 'raw':
-                    all_match = _compare_pulse(data_obj.get_channel_data()[channel_id][0],data_obj.get_channel_data()[ch][0])
+                    all_match = _compare_pulse(data_obj.get_channel_data()[channel_id][0],
+                            data_obj.get_channel_data()[ch][0])
                 # If all attributes match, return the channel
                 if all_match:
                     return ch
         # If no matching channel is found, return None
         else:
             return None
+
 
 def _compare_pulse(primary_obj,secondary_obj, raw=True):
     '''
@@ -1187,33 +1196,49 @@ def _compare_pulse(primary_obj,secondary_obj, raw=True):
     secondary_obj (object): raw, processed, or calibration data object
     '''
 
-    # Attrubutes to compare based on pulse form
     all_match = True
 
     if raw:
+        #  set the list of attributes to compare based on pulse form
         if primary_obj.is_fm():
-            pulse_attrs = ['pulse_form','frequency_end','pulse_duration','transmit_power']
+            pulse_attrs = ['pulse_form','frequency_start','frequency_end',
+                    'pulse_duration','transmit_power']
         else:
             pulse_attrs = ['pulse_form','frequency','pulse_duration','transmit_power']
 
-         # Assume they match until proven otherwise
-
+        # Check each attribute. Assume they match until proven otherwise
         for attr in pulse_attrs:
             # Check if the attribute exists in both channels
             if hasattr(secondary_obj,attr):
-                # Check if the attribute values match
-                if np.unique(getattr(primary_obj,attr))[0] != np.unique(getattr(secondary_obj,attr))[0]:
-                    all_match = False
+                # Check if the attribute values match. Due to a bug in the EK80 software,
+                # the end frequency in the XML calibration file may be 1 Hz off from the
+                # end frequency in the raw file. Because of this, the frequency_end value
+                # from the XML file is rounded.
+                if attr != 'frequency_end':
+                    if (np.unique(getattr(primary_obj,attr))[0] !=
+                        np.unique(getattr(secondary_obj,attr))[0]):
+                        all_match = False
+                else:
+                    #  this is frequency_end, round the XML cal object value
+                    if (np.unique(getattr(primary_obj,attr))[0] !=
+                        round(np.unique(getattr(secondary_obj,attr))[0],-1)):
+                        all_match = False
             else:
+                #  this attribute is not in the secondary object
                 all_match = False
     else:
+        #  this is a processed data object
+        
+        #  first check if the frequencies match
         if primary_obj.frequency.all() != secondary_obj.frequency.all():
+            #  they do not
             all_match = False
         else:
-            # If we're comparing processed data objects, we can compare the pulse attributes directly
-            pulse_attrs = ['pulse_form','pulse_duration','transmit_power']
+            # Frequencies match. Compare the pulse attributes directly
+            pulse_attrs = ['pulse_form', 'pulse_duration', 'transmit_power']
             for attr in pulse_attrs:
-                if np.unique(primary_obj.cal_parms[attr])[0] !=np.unique(secondary_obj.cal_parms[attr])[0]:
+                if (np.unique(primary_obj.cal_parms[attr])[0] !=
+                    np.unique(secondary_obj.cal_parms[attr])[0]):
                     all_match = False
     return all_match
 
@@ -1222,7 +1247,8 @@ class UnknownFormatError(Exception):
     pass
 
 
-def apply_boundary_exclusions(data_object, exclude_below_line='xyz', exclude_above_line=None, bottom_offset=0, exclude_val=np.nan):
+def apply_boundary_exclusions(data_object, exclude_below_line='xyz', exclude_above_line=None,
+        bottom_offset=0, exclude_val=np.nan):
     '''
     Default is to apply the bottom line associated with the channel ('xyz').
     '''
@@ -1230,13 +1256,19 @@ def apply_boundary_exclusions(data_object, exclude_below_line='xyz', exclude_abo
 
     if not isinstance(data_object_new, dict):
         raise TypeError('Expected a dictionary of processed_data objects (e.g., Sv)')
+        
+    #  apply surface and boundary 
     for channel in data_object_new:
-        if data_object_new[channel].cal_parms['channel_mode'] == 0: #active channel
-            data_object_new[channel] = apply_lines(data_object_new[channel],exclude_below_line=exclude_below_line,exclude_above_line=exclude_above_line, bottom_offset=bottom_offset, exclude_val=exclude_val)
+        if np.all(data_object_new[channel].cal_parms['channel_mode'] == 0): #active channel
+            data_object_new[channel] = apply_lines(data_object_new[channel],
+                    exclude_below_line=exclude_below_line,exclude_above_line=exclude_above_line,
+                    bottom_offset=bottom_offset, exclude_val=exclude_val)
+
     return data_object_new
 
 
-def apply_lines(data_object,exclude_below_line='xyz',exclude_above_line=None, bottom_offset=0, exclude_val=np.nan):
+def apply_lines(data_object,exclude_below_line='xyz',exclude_above_line=None,
+        bottom_offset=0, exclude_val=np.nan):
     '''
     Applies an exclusion mask to a processed data object
     data are returned as
@@ -1254,7 +1286,7 @@ def apply_lines(data_object,exclude_below_line='xyz',exclude_above_line=None, bo
             if hasattr(data_object, 'bottom_line'):
                 exclusion_mask.apply_below_line(data_object.bottom_line-bottom_offset, value=True)
             else:
-                print('No bottom line found in the data for channel %s' % data_object.channel_id)
+                warnings.warn('No bottom line found in the data for channel %s' % data_object.channel_id)
 
         elif isinstance(exclude_below_line, int) | isinstance(exclude_below_line, float):
             exclude_below_line = line.line(ping_time=data_object.ping_time, data=exclude_below_line)
@@ -1270,8 +1302,12 @@ def noise_correct(data_object, SNR_threshold=None,remove_passive=True,keep_noise
     remove_channels = []
 
     for channel in data_object:
-        if data_object[channel].cal_parms['channel_mode'] == 0:
+        if np.all(data_object[channel].cal_parms['channel_mode'] == 0):
             passive_channel = _find_matching_channel(data_object, channel)
+            if passive_channel is None:
+                warnings.warn('Unable to find matching passive channel for active channel ' + channel +
+                        '. This channel will not be noise corrected.')
+                continue
             passive_channel_power = data_object[passive_channel].to_power()
             passive_channel_power = noise.noise_from_passive(passive_channel_power,thresh=thresh,min_range=min_range,run_mean_weights=run_mean_weights)
 

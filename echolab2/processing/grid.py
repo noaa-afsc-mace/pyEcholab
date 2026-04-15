@@ -14,7 +14,11 @@
 # DOCUMENTATION; OR (2) TO PROVIDE TECHNICAL SUPPORT TO USERS.
 
 """
+.. module:: echolab2.processing.grid
 
+    :synopsis: The grid class generates grid vertices and associated properties
+    for the provided processed_data object and can be used both for display
+    purposes and echo-integration.
 
 | Developed by:  Rick Towler   <rick.towler@noaa.gov>
 | National Oceanic and Atmospheric Administration (NOAA)
@@ -25,7 +29,6 @@
 |       Rick Towler   <rick.towler@noaa.gov>
 | Maintained by:
 |       Rick Towler   <rick.towler@noaa.gov>
-
 """
 
 import numpy as np
@@ -183,7 +186,7 @@ class grid(object):
 
         # Get the horizontal axis data - ping_number is special since we have to create it
         if self.interval_axis == 'ping_number':
-            axis_data = np.arange(p_data.n_pings, dtype='float32')
+            axis_data = np.arange(p_data.n_pings, dtype='float32') + 1
         else:
             if  hasattr(p_data, self.interval_axis):
                 # get a copy of the interval axis data
@@ -324,11 +327,15 @@ class grid(object):
         self.interval_axis_data = axis_data
 
         # Generate the vertical axis grid attributes
-        if  hasattr(p_data, self.layer_axis):
-            axis_data = getattr(p_data, self.layer_axis)
+        if self.layer_axis.lower() == 'sample':
+            # sample number is not an innate attribute and is generated
+            axis_data = np.arange(p_data.n_samples, dtype='float32') + 1
         else:
-            raise AttributeError("The provided processed_data object lacks the specified " +
-                    "layer_axis attribute '" + self.layer_axis + "'.")
+            if  hasattr(p_data, self.layer_axis):
+                axis_data = getattr(p_data, self.layer_axis)
+            else:
+                raise AttributeError("The provided processed_data object lacks the specified " +
+                        "layer_axis attribute '" + self.layer_axis + "'.")
 
         # set the layer start and end
         if self.layer_start is not None:
@@ -410,6 +417,7 @@ class grid(object):
             self._gc_last_layer = layer
 
         #  return the data and the mask
+        #self.data[np.ix_(ping_interval_map==4,sample_layer_map==1)]
         return data_obj[self._interval_pings,:][:,self._layer_samples]
 
 
@@ -533,10 +541,9 @@ class grid(object):
             ax_end[l] = self.layer_edges[l + 1]
 
         # assign layer attributes based on the vertical axis
-        _, v_axis = self.grid_data.get_v_axis()
-        setattr(self, v_axis + '_start', ax_start)
-        setattr(self, v_axis + '_middle', ax_middle)
-        setattr(self, v_axis + '_end', ax_end)
+        setattr(self, self.layer_axis + '_start', ax_start)
+        setattr(self, self.layer_axis + '_middle', ax_middle)
+        setattr(self, self.layer_axis + '_end', ax_end)
 
         # now generate the interval properties
         # first create a ping vector (processed data objects don't usually have a ping number attribute)
@@ -546,13 +553,16 @@ class grid(object):
             # get a bool mask of this interval's pings
             ping_map = self.ping_interval_map == i
             #  and get the middle ping relative to this interval
-            int_middle_ping = np.floor(self.interval_pings[i] / 2.0).astype('uint32') - 1
+            if self.interval_pings[i] == 1:
+                int_middle_ping = 0
+            else:
+                int_middle_ping = np.floor(self.interval_pings[i] / 2.0).astype('uint32') - 1
 
-            #  create the ping number axis (pings start at 0) and assign values
-            ax_data = ping_idx[ping_map] # + 1
+            #  create the ping number axis (pings start at 1) and assign values
+            ax_data = ping_idx[ping_map] + 1
             self.ping_start[i] = ax_data[0]
             self.ping_middle[i] = ax_data[0] + int_middle_ping
-            self.ping_end[i] = ax_data[-1]
+            self.ping_end[i] = ax_data[-1] + 1
 
             # get the time axis and assign values
             ax_data = self.grid_data.ping_time[ping_map]

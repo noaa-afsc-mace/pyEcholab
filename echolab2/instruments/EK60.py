@@ -672,7 +672,7 @@ class EK60(object):
             # This datagram has NULL date/time values
             dgram_header['timestamp'] = np.datetime64("NaT")
         else:
-            # We have a plausible date/time value
+            # We have a plausible date/time value - convert it to dattime64 with ms precision
             dgram_header['timestamp'] = \
                     np.datetime64(dgram_header['timestamp'], '[ms]')
 
@@ -730,10 +730,14 @@ class EK60(object):
                 result['finished'] = True
                 return result
 
-        #  if we're here, we're reading the datagram
+        # If we're here, we're reading the datagram. Calling read while passing the header will
+        # result in re-parsing the header values so replace the timestamp with the previously
+        # parsed and converted value.
         try:
             #  pass the datagram header and read the rest of the datagram
             new_datagram = fid.read(1, header=dgram_header)
+            #  restore the previously converted to datetime64 timestamp
+            new_datagram['timestamp'] = dgram_header['timestamp']
         except SimradEOF:
             #  we're at the end of the file
             result['finished'] = True

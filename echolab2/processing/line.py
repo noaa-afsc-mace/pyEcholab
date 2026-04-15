@@ -29,6 +29,7 @@
 """
 
 import numpy as np
+from ..processing import mask
 from ..ping_data import ping_data
 from ..instruments.util import simrad_xyz
 
@@ -124,66 +125,33 @@ class line(ping_data):
         self._data_attributes += ['data']
 
 
-#    def empty_like(self, **kwargs):
-#        """Creates a line that matches "this" line except the depth/range values
-#        are NaNs.
-#
-#        This method creates a line with the same number of vertices (i.e. ping_times)
-#        as "this" line with the depth/range values set to NaNs. You can optionally
-#        set the keywords defined below. If they are not provided, the values are copied
-#        from "this" line.
-#
-#        Args:
-#            color: color is 3 element tuple [r, g, b] which defines the color of the line.
-#                    What values you supply and how they are used is dependent on your
-#                    plotting library. For example, Matplotlib accepts floats in the range
-#                    0-1 while Qt accepts integers in the range 0-255. If not provided, it
-#                    is copied "this" line.
-#            name (string): name or label for the line. If not provided, it is copied
-#                    "this" line.
-#            linestyle: linestyle is a string that defines the style of the line. If not
-#                    provided, it is copied "this" line.
-#            linewidth: linewidth is a float the defines the width of the line. If not
-#                    provided, it is copied "this" line.
-#        """
-#
-#        return line.empty_like(self, **kwargs)
-#
-#
-#    def like(self, data=None, **kwargs):
-#        """Creates a line that matches "this" line. It may or may not be an exact copy
-#        depending on the arguments passed.
-#
-#        This method creates a line with the same number of vertices (i.e.
-#        ping_times) as "this" line. If no arguments are provided, this method
-#        will return a copy of this line. You can provide arguments to
-#
-#        Args:
-#            data: (None, float or numpy array): data can be None, a float or a 1d numpy
-#                    array defining the line's vertical vertices. If data is None, the
-#                    vertex data will be NaNs. If it is a float, the vertex values
-#                    will be replicated for all vertices creating a flat horizontal line
-#                    at the specified range/depth. If data is a numpy array, its shape
-#                    must match the ping_time array.
-#            color: color is 3 element tuple [r, g, b] which defines the color of the line.
-#                    What values you supply and how they are used is dependent on your
-#                    plotting library. For example, Matplotlib accepts floats in the range
-#                    0-1 while Qt accepts integers in the range 0-255. If not provided, it
-#                    is copied "this" line.
-#            name (string): name or label for the line. If not provided, it is copied
-#                    "this" line.
-#            linestyle: linestyle is a string that defines the style of the line. If not
-#                    provided, it is copied "this" line.
-#            linewidth: linewidth is a float the defines the width of the line. If not
-#                    provided, it is copied "this" line.
-#
-#        Raise:
-#            ValueError: The length of the data array does not match the length of
-#                    the ping_time attribute.
-#
-#        """
-#
-#        return line.like(self, **kwargs)
+    def interpolate(self, p_data):
+        """Interpolates this line object's data using the provided ping time values.
+        After interpolation, this line object will contain the same number of vertices
+        as the provided object.
+
+        Args:
+            p_data (ping_data or numpy array): new ping times can be provided as
+                    a ping_data object (line, raw_data, processed_data objects) or
+                    as an array of datetime64 objects defining the new horizontal
+                    vertices of the line.
+
+        """
+
+        #  check if the times are to be grabbed from a ping_data object
+        if isinstance(p_data, ping_data):
+            new_times = p_data.ping_time
+        else:
+            # If not a ping_data object, assume we've just been given times
+            new_times = p_data
+
+        #  interpolate
+        new_data = np.interp(new_times.astype('d'), self.ping_time.astype('d'),
+                self.data, left=np.nan, right=np.nan)
+
+        #  update the data attributes
+        self.data = new_data
+        self.ping_time = new_times.copy()
 
 
     def copy(self, **kwargs):
@@ -196,7 +164,7 @@ class line(ping_data):
             same as "this" object.
         """
 
-        return line.like(self)
+        return like(self)
 
 
     def _setup_numeric(self, other):
@@ -528,6 +496,88 @@ class line(ping_data):
         return self
 
 
+    def __setitem__(self, key, value):
+        """
+        We can assign directly to the line data using assignment with mask
+        objects or we can use python array slicing.
+
+        If subscripting with a mask object, you must provide a ping based
+        mask. 
+
+        Args:
+            key: A mask object or python array slice.
+            value (float): A scalar or array to assign.
+        """
+        # Determine if we're assigning with a mask or assigning with slice object.
+        if isinstance(key, mask.mask):
+            # It's a mask.  Make sure the mask applies to this object.
+            self._check_mask(key)
+
+            if key.type.lower() == 'sample':
+                # This is a 2d mask array which we can't apply to a line
+                raise ValueError("You cannot apply a sample mask to a line.")
+            else:
+                # This is a ping based mask. We use it as-is.
+                ping_mask = key.mask
+        else:
+            # Assume we've been passed slice objects.  Just pass them along.
+            ping_mask = key
+
+        # Get a view of the sliced sample data.
+        other_data = value.data[ping_mask]
+
+        # Set the sample data to the provided value(s).
+        self.data[ping_mask] = other_data
+
+
+    def __getitem__(self, key):
+        """processed_data objects can be sliced with standard index based
+        slicing as well as mask objects.
+
+        Args:
+            key: A mask object or python array slice.
+
+        Returns:
+            The sliced/masked sample data.
+        """
+
+        # Determine if we're "slicing" with a mask or slicing with slice object.
+        if isinstance(key, mask.mask):
+
+            # Make sure the mask applies to this object.
+            self._check_mask(key)
+
+            if key.type.lower() == 'sample':
+                # This is a 2d mask array which we can't apply to a line
+                raise ValueError("You cannot apply a sample mask to a line.")
+            else:
+                # This is a ping based mask. We use it as-is.
+                ping_mask = key.mask
+        else:
+            # Assume we've been passed slice objects.  Just pass them along.
+            ping_mask = key
+
+        # Return the sliced/masked sample data.
+        return self.data[ping_mask]
+
+
+    def _check_mask(self, mask):
+        """Checks mask dimensions and values.
+
+        Ensures that the mask dimensions and axes values match our data's
+        dimensions and values.
+        Args:
+            mask (mask): A mask object.
+
+        Raises:
+            ValueError: Mask ping times do not match the data ping times
+        """
+        # Check the ping times and make sure they match.
+        if not np.array_equal(self.ping_time, mask.ping_time):
+            raise ValueError('Mask ping times do not match the data ping '
+                             'times.')
+
+
     def __str__(self):
         """Re-implements string method to provide basic information.
 
@@ -550,6 +600,27 @@ class line(ping_data):
                                                             self.ping_time[0])
         msg = "{0}                  end time: {1}\n" .format(msg,
                                                              self.ping_time[-1])
+        msg = msg + "         object attributes:"
+        n_attr = 0
+        padding = " "
+        for attr_name in self._data_attributes:
+            #  skip printing the generic data reference
+            if attr_name in ['data']:
+                continue
+            attr = getattr(self, attr_name)
+            if n_attr > 0:
+                padding = "                            "
+            if isinstance(attr, np.ndarray):
+                if attr.ndim == 1:
+                    msg = msg + padding + attr_name + " (%u)\n" % (
+                        attr.shape[0])
+                else:
+                    msg = msg + padding + attr_name + " (%u,%u)\n" % (
+                        attr.shape[0], attr.shape[1])
+            elif isinstance(attr, list):
+                    msg = msg + padding + attr_name + " (%u)\n" % (len(
+                        attr))
+            n_attr += 1
 
         return msg
 

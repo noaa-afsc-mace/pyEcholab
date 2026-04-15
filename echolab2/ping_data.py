@@ -31,8 +31,11 @@
 """
 
 import copy
+import warnings
 import numpy as np
 from scipy.interpolate import interp1d
+from scipy.sparse import csr_matrix
+
 
 class ping_data(object):
     """echolab2.ping_data is the base class for all classes that store time
@@ -126,7 +129,8 @@ class ping_data(object):
 
         Args:
             name (str): The attribute name to be added to the class.
-            data (array): A numpy array containing the data attributes.
+            data (array): A numpy array containing the data you are adding
+                as the attribute.
 
         Raises:
             ValueError: The attribute has a different number of samples than
@@ -149,7 +153,7 @@ class ping_data(object):
                     self.n_samples = data_height
                 elif self.n_samples != data_height:
                     raise ValueError('Cannot add attribute. New attribute has ' +
-                        'a different number of samples than the other attributes.')
+                        'a different number of samples than the existing attributes.')
             if data.ndim == 3:
                 # Add or update ourself.
                 setattr(self, 'n_sectors', data.shape[2])
@@ -220,7 +224,6 @@ class ping_data(object):
             delattr(self, name)
         except:
             pass
-
 
 
     def remove_data_attribute(self, name):
@@ -976,39 +979,41 @@ class ping_data(object):
             # Get a reference to this attribute.
             attr = getattr(self, attr_name)
 
-            # Resize the arrays using a technique dependent on the array dimension.
-            if attr.ndim == 1:
-                # 1d arrays can be an axis or be on the ping axes or sample axes and have
-                # to be handled differently.
-                if attr.shape[0] == old_sample_dim != new_sample_dim:
-                    # Resize this sample axes attribute.
-                    attr = np.resize(attr,(new_sample_dim))
-                elif attr.shape[0] == old_ping_dim != new_ping_dim:
-                    # Resize this ping axes attribute.
-                    attr = np.resize(attr,(new_ping_dim))
-            elif attr.ndim == 2:
-                # Resize this 2d sample data array.
-                if new_sample_dim == old_sample_dim:
-                    # If the minor axes isn't changing, we can use
-                    # np.resize() function.
-                    attr = np.resize(attr,(new_ping_dim, new_sample_dim))
-                else:
-                    # If the minor axes is changing, we need to use our
-                    # resize2d function.
-                    attr = _resize2d(attr, new_ping_dim, new_sample_dim)
-            elif attr.ndim == 3:
-                # Resize this 3d sample data array.
-                if new_sample_dim == old_sample_dim:
-                    # If the minor axes isn't changing, we can use
-                    # np.resize() function.
-                    attr = np.resize(attr,(new_ping_dim, new_sample_dim, self.n_complex))
-                else:
-                    # If the minor axes is changing, we need to use our
-                    # resize2d function.
-                    attr = _resize3d(attr, new_ping_dim, new_sample_dim, self.n_complex)
+            if isinstance(attr, np.ndarray):
 
-            #  Update the attribute.
-            setattr(self, attr_name, attr)
+                # Resize the arrays using a technique dependent on the array dimension.
+                if attr.ndim == 1:
+                    # 1d arrays can be an axis or be on the ping axes or sample axes and have
+                    # to be handled differently.
+                    if attr.shape[0] == old_sample_dim != new_sample_dim:
+                        # Resize this sample axes attribute.
+                        attr = np.resize(attr,(new_sample_dim))
+                    elif attr.shape[0] == old_ping_dim != new_ping_dim:
+                        # Resize this ping axes attribute.
+                        attr = np.resize(attr,(new_ping_dim))
+                elif attr.ndim == 2:
+                    # Resize this 2d sample data array.
+                    if new_sample_dim == old_sample_dim:
+                        # If the minor axes isn't changing, we can use
+                        # np.resize() function.
+                        attr = np.resize(attr,(new_ping_dim, new_sample_dim))
+                    else:
+                        # If the minor axes is changing, we need to use our
+                        # resize2d function.
+                        attr = _resize2d(attr, new_ping_dim, new_sample_dim)
+                elif attr.ndim == 3:
+                    # Resize this 3d sample data array.
+                    if new_sample_dim == old_sample_dim:
+                        # If the minor axes isn't changing, we can use
+                        # np.resize() function.
+                        attr = np.resize(attr,(new_ping_dim, new_sample_dim, self.n_complex))
+                    else:
+                        # If the minor axes is changing, we need to use our
+                        # resize2d function.
+                        attr = _resize3d(attr, new_ping_dim, new_sample_dim, self.n_complex)
+
+                #  Update the attribute.
+                setattr(self, attr_name, attr)
 
         # Set the new shape attributes
         self.n_samples = new_sample_dim
@@ -1080,6 +1085,553 @@ class ping_data(object):
 
         # Return the indices that are included in the specified range.
         return primary_index[mask]
+
+
+    def resample_by_axes(self, v_height, h_length, v_axis='range', h_axis='ping_number',
+            method='area_weighted', skip_attributes=[]):
+        """resample_by_axes resamples pings in both vertical and/or along track dimensions.
+       
+        This is similar to the Echoview "Resample by..." operators except that you have finer
+        control over the vertical axes when resampling.
+       
+        Args:
+            v_height (int, float, None): Specify the vertical height of the new samples in 
+            the specified axis units. If depth or range are specified, the units are meters.
+            If sample is specified, the units are sample numbers. Set to None, the vertical
+            axis is not resampled.
+
+            h_length (int, float, timestamp64, None): Specify the horizontal extent of the 
+            new samples in the specified axis units. If ping_number is specified, the units
+            are pings. If ping_time is specified, the units are time in datetime64 format.
+            If h_axis is specified as trip_distance_m, the units are meters and for
+            trip_distance_nmi the units are nautical miles. If set to None, the horizontal
+            axis is not resampled.
+
+            v_axis (str): Set to a string specifying the vertical axis to use when
+            resampling.
+            
+                'range':  
+                'depth':
+                'sample':
+
+                Default: range
+
+            h_axis (str): Set to a string specifying the horizontal axis to use when
+            resampling.
+            
+                'ping_number':  
+                'ping_time':
+                'trip_distance_m':
+                'trip_distance_nmi'
+
+                Default: ping_number
+
+            method (str): Set to a string specifying the method to use when resampling. Options
+            are:
+                'area_weighted': Samples that are only partially covered by the new grid will be
+                weighted according to the fraction of the sample that is covered. This is also
+                known as conservative regridding and is the default method.
+
+                'center_weighted': Samples that are only partially covered by the new grid will be
+                weighted as 1 if the center of the sample is covered and 0 if it is not.
+
+                Default: 'area_weighted'
+
+            skip_attributes (list): Pass a list of data attributes specifying attributes that
+            should be skipped when resampling data stored within this object. Normally
+            this method will resample all of the objects data attributes (like lat/lon, SOG,
+            bottom depth, etc.) so they are the same size and remain aligned with the object's
+            new axes. This may not be suitable for all data and you can specify attributes to
+            skip here.
+
+        """
+
+        warnings.warn("The resample_by_axes() method has not been fully tested and vetted. Please "
+                "check all results for sanity.")
+
+        # check if we have been given any new grid dimensions. If not, just return.
+        if h_length is None and v_height is None:
+            return
+
+        # Transform ping time to a float. For datetime64[ms] objects this is the number of ms since the epoch.
+        ping_time = self.ping_time.astype('float64')
+
+        # Only regrid alongtrack if we have been given a new horizontal/alongtrack length
+        if h_length is not None:
+
+            # Get the horizontal axis data - perform any transformations as needed
+            if h_axis == 'ping_number':
+                # ping number is not an innate attribute and is generated
+                h_axis_data = np.arange(self.n_pings, dtype='float32') + 1
+
+            elif h_axis == 'ping_time':
+                # Ping time needs to be converted to a float for gridding and we can use the already converted values
+                h_axis_data = ping_time
+
+                # Transform the horizontal length to a float. Since the interval length can be specified
+                # in arbitrary time units we must first get it in ms then get that as a float64
+                h_length = h_length.astype('datetime64[ms]').astype('float64')
+
+            elif h_axis == 'trip_distance_m':
+                # Trip distance in m a computed axis - we take vessel log (trip_distance_nmi) and convert to meters
+                if  hasattr(self, 'trip_distance_nmi'):
+                    # get a copy of the interval axis data
+                    h_axis_data = getattr(self, h_axis).copy().astype('float32')
+                    h_axis_data *= 1852
+                else:
+                    raise AttributeError("This object lacks the horizontal axis attribute 'trip_distance_nmi' " +
+                            "which is required for the specified 'trip_distance_m' horizontal axis.")
+            else:
+                # This axis type doesn't need any special treatment
+                if  hasattr(self, h_axis):
+                    # get a copy of the interval axis data
+                    h_axis_data = getattr(self, h_axis).astype('float32')
+                else:
+                    raise AttributeError("This object lacks the specified " +
+                            "horizontal axis attribute '" + h_axis + "'.")
+
+            # Generate the new horizontal grid attributes
+            n_intervals, interval_edges, interval_centers, interval_pings, \
+                    ping_interval_map = self._grid_axis(h_axis_data, h_length)
+
+            # Compute new ping times for our new horizontal grid
+            new_ping_times = np.empty((n_intervals), dtype='float64')
+            for i in range(n_intervals):
+                new_ping_times[i] = np.nansum(ping_time[np.ix_(ping_interval_map==i)]) / interval_pings[i]
+            # Convert our new times to datetime64[ms]...
+            new_ping_times = new_ping_times.astype('datetime64[ms]')
+            # and update
+            setattr(self, 'ping_time', new_ping_times)
+
+        if v_height is not None:
+
+            # Get the vertical axis data
+            if v_axis.lower() == 'sample':
+                # like ping number, sample number is not an innate attribute and is generated
+                v_axis_data = np.arange(self.n_samples, dtype='float32') + 1
+            else:
+                if  hasattr(self, v_axis):
+                    v_axis_data = getattr(self, v_axis)
+                else:
+                    raise AttributeError("This object lacks the specified " +
+                            "vertical axis attribute '" + v_axis + "'.")
+
+            # Generate the new vertical axis grid attributes
+            n_layers, layer_edges, new_v_axis, layer_samples, \
+                    sample_layer_map = self._grid_axis(v_axis_data, v_height)
+
+            # update the vertical axis - if the the resampling axis is sample based,
+            # we need to innterpolate the new range/depth axes values
+            if v_axis.lower() == 'sample':
+                if hasattr(self, 'range'):
+                    new_axis = np.interp(new_v_axis, v_axis_data, self.range)
+                    setattr(self, 'range', new_axis)
+                if hasattr(self, 'depth'):
+                    new_axis = np.interp(new_v_axis, v_axis_data, self.depth)
+                    setattr(self, 'depth', new_axis)
+            else:
+                setattr(self, v_axis, new_v_axis)
+
+        #  create the NaN mask of the data
+        mask = np.isnan(self.data)
+
+        # zero out NaNs so they don't contribute to the weighted average.
+        self.data[mask] = 0
+
+        # invert the mask to represent the valid data. It will be transformed, along
+        # with the data, and then we'll divide it into the data to compute the mean.
+        np.logical_not(mask, out=mask)
+
+        # check if we have a horizontal axis to resample
+        if h_length is not None:
+            # area weighted resampling requires both the source and desination grids to
+            # be defined the edges of the samples but our source grid is defined by the
+            # centers. Since the horizontal axis is not regularly spaced, we just add
+            # a final edge to the end of the horizontal axis data that is the same distance
+            # from the last point as the last two points are from each other. 
+            h_axis_thickness = h_axis_data[-1] - h_axis_data[-2]
+            h_axis_edges = np.append(h_axis_data, h_axis_data[-1] + h_axis_thickness)
+
+            # NOTE! These are for debugging - remove when finished
+            self.resample_dest_interval_edges = interval_edges
+            self.resample_source_interval_edges = h_axis_edges
+
+            # compute the weights for the horizontal axis resampling.
+            if method == 'area_weighted':
+                h_weights = self._get_area_weighted_weights(h_axis_edges, interval_edges)
+            elif method == 'center_weighted':
+                h_weights = self._get_center_weighted_weights(h_axis_edges, interval_edges)
+            else:
+                raise ValueError("Invalid resampling method specified. Valid options are"
+                        " 'area_weighted' and 'center_weighted'.")
+
+            # resample the data along the horizontal axis. Handle the data and sample
+            # masks separately.
+            resampled_num = h_weights @ self.data
+            resampled_den = h_weights @ mask.astype('float')
+        else:
+            # since we're not resampling the horizontal axis, just pass the data
+            # through for the vertical resampling step.
+            resampled_num = self.data
+            resampled_den = mask.astype('float')
+
+        #  check if we're resampling the vertical axis.
+        if v_height is not None:
+            # Like the horizontal axis, we need to define the edges of the source 
+            # vertical axis. Since the vertical axis is regularly spaced, we can
+            # just subtract and add half of the sample thickness to get the edges.
+            v_axis_edges = np.append(v_axis_data - self.sample_thickness / 2, 
+                    v_axis_data[-1] + self.sample_thickness / 2)
+            
+            # NOTE! These are for debugging - remove when finished
+            self.resample_dest_layer_edges = layer_edges
+            self.resample_source_layer_edges = v_axis_edges
+
+            # compute the weights for the vertical axis resampling.
+            if method == 'area_weighted':
+                v_weights = self._get_area_weighted_weights(v_axis_edges, layer_edges)
+            elif method == 'center_weighted':
+                v_weights = self._get_center_weighted_weights(v_axis_edges, layer_edges)
+            else:
+                raise ValueError("Invalid resampling method specified. Valid options are"
+                        " 'area_weighted' and 'center_weighted'.")
+
+            # resample the data along the vertical axis. Again, we handle the data
+            # and sample nan mask separately.
+            resampled_num = resampled_num @ v_weights.T
+            resampled_den = resampled_den @ v_weights.T
+
+        # Compute the means by dividing the resampled data values by
+        # the resampled "good samples" mask.
+        resampled_data = np.divide(resampled_num, resampled_den, 
+                        out=np.full_like(resampled_num, np.nan), 
+                        where=resampled_den > 0)
+
+        #  update our data attribute with our newly resampled data
+        setattr(self, 'data', resampled_data)
+
+        #  update data attribues
+        self.n_samples = n_layers
+        self.n_pings = n_intervals
+        old_shape = self.shape
+        self.shape = self.data.shape
+        self.sample_thickness = layer_edges[1] - layer_edges[0]
+
+        # The final step is to average the other data attributes so they remain aligned
+        # with the new data axes. Here in the base class, we only handle numpy arrays.
+        # Attributes of other types (e.g. pyEcholab line object) must be handled in 
+        # the appropiate child classes.
+
+        # Average the other data attributes - skip attributes we have already handled
+        # or been explicitly told to ignore.
+        skip_attributes.extend(['ping_time', 'data', 'range', 'depth'])
+        for attr_name in self._data_attributes:
+            if attr_name in skip_attributes:
+                # This attribute has either been handled already or we have been
+                # explicitly told to skip it. Move on. 
+                continue
+
+            # Get the attribute data
+            attr_data = getattr(self, attr_name)
+            
+            # Handle attributes based on type. We can average numpy arrays directly if their
+            # dimensions match the horizontal or vertical axis.  If they don't match, we will
+            # emit a warning and just copy them as-is.
+
+            if isinstance(attr_data, np.ndarray):
+                #  we can average numpy data directly. 
+                if attr_data.shape[0] == old_shape[0] and h_length is not None:
+                    #  this is a horizontal (ping based) data attribute
+                    new_attr_data = np.empty((n_intervals), dtype=attr_data.dtype)
+                    for i in range(n_intervals):
+                        this_data = attr_data[np.ix_(ping_interval_map==i)]
+                        good_vals = interval_pings[i] - np.count_nonzero(np.isnan(this_data))
+                        if good_vals > 0:
+                            #  compute the mean of the non-NaN values in this interval
+                            new_attr_data[i] = np.nansum(this_data) / good_vals
+                        else:
+                            #  all elements are NaN so the result is NaN
+                            new_attr_data[i] = np.nan
+
+                    #  update the attribute
+                    setattr(self, attr_name, new_attr_data)
+
+                elif attr_data.shape[0] == old_shape[1] and v_height is not None:
+                    #  this is a vertical (sample based) data attribute
+                    new_attr_data = np.empty((n_layers), dtype=attr_data.dtype)
+                    for i in range(n_layers):
+                        this_data = attr_data[np.ix_(sample_layer_map==i)]
+                        good_vals = layer_samples[i] - np.count_nonzero(np.isnan(this_data))
+                        if good_vals > 0:
+                            #  compute the mean of the non-NaN values in this layer
+                            new_attr_data[i] = np.nansum(this_data) / good_vals
+                        else:
+                            #  all elements are NaN so the result is NaN
+                            new_attr_data[i] = np.nan
+
+                    #  update the attribute
+                    setattr(self, attr_name, new_attr_data)
+
+                else:
+                    # the size of this attribute doesn't match either axes so we can't resample it.
+                    warnings.warn("The dimensions of data attribute " + attr_name + " do not match " +
+                            "either axis. This attribute will be ignored.")
+
+
+    def _get_area_weighted_weights(self, src_b, dst_b):
+        """
+        src_b: (N+1,) array of source boundaries
+        dst_b: (M+1,) array of destination boundaries
+        Returns: (M, N) sparse weight matrix
+        """
+
+        n_src, n_dst = len(src_b) - 1, len(dst_b) - 1
+        src_l, src_h = src_b[:-1], src_b[1:]
+        dst_l, dst_h = dst_b[:-1], dst_b[1:]
+
+        weights = np.zeros((n_dst, n_src))
+        for i in range(n_dst):
+            # Calculate overlap of dst cell 'i' with all src cells
+            overlap = np.maximum(0, np.minimum(src_h, dst_h[i]) - np.maximum(src_l, dst_l[i]))
+            # Normalize by destination cell width
+            weights[i, :] = overlap / (dst_h[i] - dst_l[i])
+        
+        return csr_matrix(weights)
+    
+
+    def _get_center_weighted_weights(self, src_b, dst_b):
+        """
+        src_b: (N+1,) array of source boundaries
+        dst_b: (M+1,) array of destination boundaries
+        Returns: (M, N) sparse weight matrix
+        """
+
+        # Calculate centers of source cells
+        src_centers = (src_b[:-1] + src_b[1:]) / 2.0
+        
+        # Extract destination boundaries
+        dst_l = dst_b[:-1, np.newaxis]
+        dst_h = dst_b[1:, np.newaxis]
+        
+        # Compare all centers against all boundaries
+        mask = (src_centers >= dst_l) & (src_centers < dst_h)
+        
+        # 4. Convert to float and then to sparse matrix
+        return csr_matrix(mask.astype(float))
+
+
+    def brute_force_resample(self, v_height, h_length, v_axis='range', h_axis='ping_number'):
+        """
+        This method loops thru the intervals/cells to compute the mean using a brute force
+        method. It only computes center weighted averages.
+
+        brute_force_resample only exists as a check against the resampling methods implemented
+        in resample_by_axes.
+        
+        This method will be removed when testing is complete.
+        """
+
+        # check if we have been given any new grid dimensions. If not, just return.
+        if h_length is None or v_height is None:
+            raise AttributeError("Brute force resampling requires both horizontal and vertical grid dimensions.")
+
+        # Transform ping time to a float. For datetime64[ms] objects this is the number of ms since the epoch.
+        ping_time = self.ping_time.astype('float64')
+
+        # Get the horizontal axis data - perform any transformations as needed
+        if h_axis == 'ping_number':
+            # ping number is not an innate attribute and is generated
+            h_axis_data = np.arange(self.n_pings, dtype='float32') + 1
+
+        elif h_axis == 'ping_time':
+            # Ping time needs to be converted to a float for gridding and we can use the already converted values
+            h_axis_data = ping_time
+
+            # Transform the horizontal length to a float. Since the interval length can be specified
+            # in arbitrary time units we must first get it in ms then get that as a float64
+            h_length = h_length.astype('datetime64[ms]').astype('float64')
+
+        elif h_axis == 'trip_distance_m':
+            # Trip distance in m a computed axis - we take vessel log (trip_distance_nmi) and convert to meters
+            if  hasattr(self, 'trip_distance_nmi'):
+                # get a copy of the interval axis data
+                h_axis_data = getattr(self, h_axis).copy().astype('float32')
+                h_axis_data *= 1852
+            else:
+                raise AttributeError("This object lacks the horizontal axis attribute 'trip_distance_nmi' " +
+                        "which is required for the specified 'trip_distance_m' horizontal axis.")
+        else:
+            # This axis type doesn't need any special treatment
+            if  hasattr(self, h_axis):
+                # get a copy of the interval axis data
+                h_axis_data = getattr(self, h_axis).astype('float32')
+            else:
+                raise AttributeError("This object lacks the specified " +
+                        "horizontal axis attribute '" + h_axis + "'.")
+
+        # Generate the new horizontal grid attributes
+        n_intervals, interval_edges, interval_centers, interval_pings, \
+                ping_interval_map = self._grid_axis(h_axis_data, h_length)
+
+        # Compute new ping times for our new horizontal grid
+        new_ping_times = np.empty((n_intervals), dtype='float64')
+        for i in range(n_intervals):
+            new_ping_times[i] = np.nansum(ping_time[np.ix_(ping_interval_map==i)]) / interval_pings[i]
+        # Convert our new times to datetime64[ms]...
+        new_ping_times = new_ping_times.astype('datetime64[ms]')
+        # and update
+        setattr(self, 'ping_time', new_ping_times)
+
+        # Get the vertical axis data
+        if v_axis.lower() == 'sample':
+            # like ping number, sample number is not an innate attribute and is generated
+            v_axis_data = np.arange(self.n_samples, dtype='float32') + 1
+        else:
+            if  hasattr(self, v_axis):
+                v_axis_data = getattr(self, v_axis)
+            else:
+                raise AttributeError("This object lacks the specified " +
+                        "vertical axis attribute '" + v_axis + "'.")
+
+        # Generate the new vertical axis grid attributes
+        n_layers, layer_edges, new_v_axis, layer_samples, \
+                sample_layer_map = self._grid_axis(v_axis_data, v_height)
+
+        # update the vertical axis - if the the axis is sample based, we need
+        # to innterpolate the new range/depth axes values
+        if v_axis.lower() == 'sample':
+            if hasattr(self, 'range'):
+                new_axis = np.interp(new_v_axis, v_axis_data, self.range)
+                setattr(self, 'range', new_axis)
+            if hasattr(self, 'depth'):
+                new_axis = np.interp(new_v_axis, v_axis_data, self.depth)
+                setattr(self, 'depth', new_axis)
+        else:
+            setattr(self, v_axis, new_v_axis)
+
+        #  finally resample the sample data
+        resampled_data = self._brute_force(n_intervals, n_layers, interval_pings, ping_interval_map,
+            layer_samples, sample_layer_map)
+        setattr(self, 'data', resampled_data)
+
+        #  update data attribues
+        self.n_samples = n_layers
+        self.n_pings = n_intervals
+        old_shape = self.shape
+        self.shape = self.data.shape
+        self.sample_thickness = layer_edges[1] - layer_edges[0]
+
+        # Average the other data attributes - skip attributes we handle spe
+        skip_attrs = ['ping_time', 'data', 'range', 'depth']
+        for attr_name in self._data_attributes:
+            if attr_name in skip_attrs:
+                # This attribute has been handled already - move on
+                continue
+
+            # Get the attribute data
+            attr_data = getattr(self, attr_name)
+            
+            # Handle attributes based on type. We can average numpy arrays directly if their
+            # dimensions match the horizontal or vertical axis.  If they don't match, we will
+            # emit a warning and just copy them as-is. We can handle specific types as needed.
+            # Most other types will be ignored. 
+
+            if isinstance(attr_data, np.ndarray):
+                #  we can average numpy data directly. 
+                if attr_data.shape[0] == old_shape[0] and h_length is not None:
+                    #  this is a horizontal (ping based) data attribute
+                    new_attr_data = np.empty((n_intervals), dtype=attr_data.dtype)
+                    for i in range(n_intervals):
+                        this_data = attr_data[np.ix_(ping_interval_map==i)]
+                        good_vals = interval_pings[i] - np.count_nonzero(np.isnan(this_data))
+                        if good_vals > 0:
+                            #  compute the mean of the non-NaN values in this interval
+                            new_attr_data[i] = np.nansum(this_data) / good_vals
+                        else:
+                            #  all elements are NaN so the result is NaN
+                            new_attr_data[i] = np.nan
+
+                    #  update the attribute
+                    setattr(self, attr_name, new_attr_data)
+
+                elif attr_data.shape[0] == old_shape[1] and v_height is not None:
+                    #  this is a vertical (sample based) data attribute
+                    new_attr_data = np.empty((n_layers), dtype=attr_data.dtype)
+                    for i in range(n_layers):
+                        this_data = attr_data[np.ix_(sample_layer_map==i)]
+                        good_vals = layer_samples[i] - np.count_nonzero(np.isnan(this_data))
+                        if good_vals > 0:
+                            #  compute the mean of the non-NaN values in this layer
+                            new_attr_data[i] = np.nansum(this_data) / good_vals
+                        else:
+                            #  all elements are NaN so the result is NaN
+                            new_attr_data[i] = np.nan
+
+                    #  update the attribute
+                    setattr(self, attr_name, new_attr_data)
+
+                else:
+                    warnings.warn("The dimensions of data attribute " + attr_name + " do not match " +
+                            "either axis. This attribute will be ignored.")
+
+
+    def _brute_force(self, n_intervals, n_layers, interval_pings, ping_interval_map,
+            layer_samples, sample_layer_map):
+
+        resamp_data = np.empty((n_intervals,n_layers), dtype=self.data.dtype)
+
+        for i in range(n_intervals):
+            ping_idx = ping_interval_map==i
+            for j in range(n_layers):
+                cell_data = self.data[np.ix_(ping_idx,sample_layer_map==j)]
+                n_nans_in_cell = np.count_nonzero(np.isnan(cell_data))
+                good_samps = (interval_pings[i] * layer_samples[j]) - n_nans_in_cell
+                if good_samps > 0:
+                    resamp_data[i,j] = np.nansum(cell_data) / good_samps
+                else:
+                    resamp_data[i,j] = np.nan
+
+        return resamp_data
+
+
+    def _grid_axis(self, axis_data, axis_size):
+
+        '''
+        _grid_axis is an internal method that generates the grid parameters for the
+        provided axis_data and size (horizontal length or vertical height)
+        '''
+
+        # Get the span of the axis data
+        span = float(axis_data[-1]) - float(axis_data[0])
+
+        # Compute the number of intervals/cells
+        n_units = np.ceil(span / axis_size).astype('uint32')
+
+        # compute the interval/cell edges, including the rightmost/bottommost edge
+        axis_edges = (np.arange(n_units + 1) * float(axis_size)) + axis_data[0]
+        #axis_edges[-1] = axis_data[-1]
+
+        # create the axis mapping array - we include all pings/samples in an interval/cell
+        # that are >= to the interval/cell start and < the interval/cell end EXCEPT FOR
+        # THE LAST INTERVAL where we include the last ping/sample if it <= the interval/cell
+        # end. intervals/samples that do not map to the grid are assigned a map value of -1.
+        axis_map = np.full(axis_data.shape, -1, dtype='int32')
+        n_els = np.full((n_units), 0, dtype='uint32')
+        axis_centers = np.empty((n_units), dtype='float64')
+        for b in range(n_units):
+            if b < (n_units - 1):
+                # for all intervals up to the last interval/layer - include >= start and < end
+                mask = np.logical_and(axis_data >= axis_edges[b], axis_data < axis_edges[b+1])
+            else:
+                # for the last interval/layer, include >= start and <= end to ensure last ping/sample is captured
+                mask = np.logical_and(axis_data >= axis_edges[b], axis_data <= axis_edges[b+1])
+
+            #  store the number of elements, the map, and compute the center
+            n_els[b] = mask.sum()
+            axis_map[mask] = b
+            axis_centers[b] = np.nansum(axis_data[np.ix_(axis_map==b)]) / n_els[b]
+
+        return n_units, axis_edges, axis_centers, n_els, axis_map
 
 
     def _vertical_resample(self, data, sample_intervals,
@@ -1466,48 +2018,53 @@ class ping_data(object):
 
             # Get the attribute.
             attr = getattr(self, attr_name)
+            
+            if isinstance(attr, np.ndarray):
 
-            if attr.shape[0] == self.n_samples:
-                # Copy all vertical axes w/o changing them.
-                data = attr.copy()
-            else:
-                # Create an array with the appropriate shape filled with the
-                # specified value.
-                if attr.ndim == 1:
-                    # Create an array with the same shape filled with the
-                    # specified value.
-                    data = np.empty(n_pings, dtype=attr.dtype)
-
-                    # Check if this is the ping_time attribute and if we
-                    # should copy this instance's ping_time data or create an
-                    # empty ping_time vector
-                    if attr_name == 'ping_time':
-                        if empty_times:
-                            data[:] = np.datetime64('NaT')
-                        else:
-                            data[:] = attr.copy()
-                    elif data.dtype == 'datetime64[ms]':
-                        data[:] = np.datetime64('NaT')
-                    elif np.issubdtype(data.dtype, np.integer):
-                        data[:] = 0
-                    else:
-                        data[:] = value
+                if attr.shape[0] == self.n_samples:
+                    # Copy all vertical axes w/o changing them.
+                    data = attr.copy()
                 else:
-                    # Check if we're supposed to create the sample data arrays
-                    if no_data:
-                        # No - we'll set them to None assuming the user will set them
-                        data = None
+                    # Create an array with the appropriate shape filled with the
+                    # specified value.
+                    if attr.ndim == 1:
+                        # Create an array with the same shape filled with the
+                        # specified value.
+                        data = np.empty(n_pings, dtype=attr.dtype)
+
+                        # Check if this is the ping_time attribute and if we
+                        # should copy this instance's ping_time data or create an
+                        # empty ping_time vector
+                        if attr_name == 'ping_time':
+                            if empty_times:
+                                data[:] = np.datetime64('NaT')
+                            else:
+                                data[:] = attr.copy()
+                        elif data.dtype == 'datetime64[ms]':
+                            data[:] = np.datetime64('NaT')
+                        elif np.issubdtype(data.dtype, np.integer):
+                            data[:] = 0
+                        else:
+                            data[:] = value
                     else:
-                        # Yes, create the data arrays
-                        if attr.ndim == 2:
-                            # Create the 2d array(s).
-                            data = np.empty((n_pings, self.n_samples), dtype=attr.dtype)
-                            data[:, :] = value
-                        elif attr.ndim == 3:
-                            #  must be a 3d attribute
-                            data = np.empty((n_pings, self.n_samples, self.n_complex),
-                                dtype=attr.dtype)
-                            data[:, :, :] = value
+                        # Check if we're supposed to create the sample data arrays
+                        if no_data:
+                            # No - we'll set them to None assuming the user will set them
+                            data = None
+                        else:
+                            # Yes, create the data arrays
+                            if attr.ndim == 2:
+                                # Create the 2d array(s).
+                                data = np.empty((n_pings, self.n_samples), dtype=attr.dtype)
+                                data[:, :] = value
+                            elif attr.ndim == 3:
+                                #  must be a 3d attribute
+                                data = np.empty((n_pings, self.n_samples, self.n_complex),
+                                    dtype=attr.dtype)
+                                data[:, :, :] = value
+            else:
+                #  For now we don't duplicate attributes that aren't numpy arrays
+                data = None
 
             # Add the attribute to our empty object.  We can skip using
             # add_data_attribute here because we shouldn't need to check
@@ -1516,3 +2073,146 @@ class ping_data(object):
             setattr(obj, attr_name, data)
 
         return obj
+
+
+
+
+    # def _center_weighted_resample(self, n_intervals, n_layers, interval_pings, ping_interval_map,
+    #         layer_samples, sample_layer_map):
+
+    #     resamp_data = np.empty((n_intervals,n_layers), dtype=self.data.dtype)
+
+    #     for i in range(n_intervals):
+    #         ping_idx = ping_interval_map==i
+    #         for j in range(n_layers):
+    #             cell_data = self.data[np.ix_(ping_idx,sample_layer_map==j)]
+    #             n_nans_in_cell = np.count_nonzero(np.isnan(cell_data))
+    #             good_samps = (interval_pings[i] * layer_samples[j]) - n_nans_in_cell
+    #             if good_samps > 0:
+    #                 resamp_data[i,j] = np.nansum(cell_data) / good_samps
+    #             else:
+    #                 resamp_data[i,j] = np.nan
+
+    #     return resamp_data
+
+
+
+    # def _area_weighted_resample(self, v_axis_data, h_axis_data, interval_edges, layer_edges):
+
+    #     v_axis_edges = np.append(v_axis_data - self.sample_thickness / 2, 
+    #             v_axis_data[-1] + self.sample_thickness / 2)
+    #     h_axis_thickness = h_axis_data[-1] - h_axis_data[-2]
+    #     h_axis_edges = np.append(h_axis_data, h_axis_data[-1] + h_axis_thickness)
+
+    #     h_weights = self._get_weights_1d(h_axis_edges, interval_edges)
+    #     v_weights = self._get_weights_1d(v_axis_edges, layer_edges)
+
+    #     #  finally resample the sample data
+    #     self.to_linear()
+
+    #     #  create the NaN mask and zero out NaNs
+    #     mask = np.isnan(self.data)
+    #     self.data[mask] = 0
+    #     #  invert the mask
+    #     np.logical_not(mask, out=mask)
+
+    #     resampled_num = h_weights @ self.data @ v_weights.T
+    #     resampled_den = h_weights @ mask.astype('float') @ v_weights.T
+    #     resampled_data = np.divide(resampled_num, resampled_den, 
+    #                        out=np.full_like(resampled_num, np.nan), 
+    #                        where=resampled_den > 0)
+
+
+    #     return resampled_data
+
+    '''
+    def view_as_blocks(arr_in, block_shape):
+
+        from numpy.lib.stride_tricks import as_strided
+
+        """Block view of the input n-dimensional array (using re-striding).
+
+        Blocks are non-overlapping views of the input array.
+
+        Parameters
+        ----------
+        arr_in : ndarray, shape (M[, ...])
+            Input array.
+        block_shape : tuple
+            The shape of the block. Each dimension must divide evenly into the
+            corresponding dimensions of `arr_in`.
+
+        Returns
+        -------
+        arr_out : ndarray
+            Block view of the input array.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from skimage.util.shape import view_as_blocks
+        >>> A = np.arange(4*4).reshape(4,4)
+        >>> A
+        array([[ 0,  1,  2,  3],
+               [ 4,  5,  6,  7],
+               [ 8,  9, 10, 11],
+               [12, 13, 14, 15]])
+        >>> B = view_as_blocks(A, block_shape=(2, 2))
+        >>> B[0, 0]
+        array([[0, 1],
+               [4, 5]])
+        >>> B[0, 1]
+        array([[2, 3],
+               [6, 7]])
+        >>> B[1, 0, 1, 1]
+        13
+
+        >>> A = np.arange(4*4*6).reshape(4,4,6)
+        >>> A  # doctest: +NORMALIZE_WHITESPACE
+        array([[[ 0,  1,  2,  3,  4,  5],
+                [ 6,  7,  8,  9, 10, 11],
+                [12, 13, 14, 15, 16, 17],
+                [18, 19, 20, 21, 22, 23]],
+               [[24, 25, 26, 27, 28, 29],
+                [30, 31, 32, 33, 34, 35],
+                [36, 37, 38, 39, 40, 41],
+                [42, 43, 44, 45, 46, 47]],
+               [[48, 49, 50, 51, 52, 53],
+                [54, 55, 56, 57, 58, 59],
+                [60, 61, 62, 63, 64, 65],
+                [66, 67, 68, 69, 70, 71]],
+               [[72, 73, 74, 75, 76, 77],
+                [78, 79, 80, 81, 82, 83],
+                [84, 85, 86, 87, 88, 89],
+                [90, 91, 92, 93, 94, 95]]])
+        >>> B = view_as_blocks(A, block_shape=(1, 2, 2))
+        >>> B.shape
+        (4, 2, 3, 1, 2, 2)
+        >>> B[2:, 0, 2]  # doctest: +NORMALIZE_WHITESPACE
+        array([[[[52, 53],
+                 [58, 59]]],
+               [[[76, 77],
+                 [82, 83]]]])
+        """
+        if not isinstance(block_shape, tuple):
+            raise TypeError('block needs to be a tuple')
+
+        block_shape = np.array(block_shape)
+        if (block_shape <= 0).any():
+            raise ValueError("'block_shape' elements must be strictly positive")
+
+        if block_shape.size != arr_in.ndim:
+            raise ValueError("'block_shape' must have the same length " "as 'arr_in.shape'")
+
+        arr_shape = np.array(arr_in.shape)
+        if (arr_shape % block_shape).sum() != 0:
+            raise ValueError("'block_shape' is not compatible with 'arr_in'")
+
+        # -- restride the array to build the block view
+        new_shape = tuple(arr_shape // block_shape) + tuple(block_shape)
+        new_strides = tuple(arr_in.strides * block_shape) + arr_in.strides
+
+        arr_out = as_strided(arr_in, shape=new_shape, strides=new_strides)
+
+        return arr_out
+    '''
