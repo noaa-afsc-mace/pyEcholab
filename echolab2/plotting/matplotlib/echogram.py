@@ -122,7 +122,7 @@ class Echogram(object):
         elif isinstance(mpl_container, figure.Figure):
             self.figure = mpl_container
             self.axes = mpl_container.gca()
-        elif isinstance(mpl_container, axes._subplots.Subplot):
+        elif isinstance(mpl_container, axes.Subplot):
             self.figure = None
             self.axes = mpl_container
         else:

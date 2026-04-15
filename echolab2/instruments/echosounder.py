@@ -1115,7 +1115,8 @@ def _filter_channel(chan, raw_obj, channels, frequencies,data_type):
         return_chan = True
 
     if (data_type=='Svf') and (hasattr(raw_obj,'complex') is False):
-        return_chan = False # If we don't have complex we can't caluclate Svf
+        # If we don't have complex we can't calculate Svf
+        return_chan = False 
 
     return return_chan
 
