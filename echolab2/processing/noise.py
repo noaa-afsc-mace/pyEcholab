@@ -111,7 +111,7 @@ def noise_correct(data_object): # linear average of np array
     return data_object
 
 
-def SNR_threshold(data_obj,SNR_thresh):
+def SNR_threshold(data_obj,SNR_thresh,exclude_val=-999):
     ''' compute SNR following De Robertis and Higginbottom eq 9-10
     Takes an Sv processed data object smooths it using an evenly weighted
     2-d matrix of adjacent samples via convolution. Convolution is done in linear domain
@@ -126,5 +126,5 @@ def SNR_threshold(data_obj,SNR_thresh):
         noise_corr_Sv data processed object with SNR<SNR_thresh replaced with -999
     '''    
     SNR=data_obj.data-data_obj.noise_Sv #compute SNR
-    data_obj.data[SNR<SNR_thresh]=-999
+    data_obj.data[SNR<SNR_thresh]=exclude_val
     return data_obj

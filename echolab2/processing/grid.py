@@ -70,9 +70,10 @@ class grid(object):
 
         interval_pings: the number of pings in each interval
 
-        ping_interval_map:
-        n_layers
-        layer_edges
+        ping_interval_map: a numpy array that maps pings to intervals
+
+        n_layers: The number of layers in the grid
+        layer_edges: a numpy array containing the
         layer_samples
         sample_layer_map
 
@@ -91,6 +92,7 @@ class grid(object):
 
         interval_length (int OR float OR timedelta64): Specify the length of the grid intervals in
                 units specified in the interval_axis keyword argument.
+                    Default: 0.5
         interval_axis (string): A string specifying the horizontal axis to use when creating
                 the grid. Valid values are:
                     trip_distance_nmi: The horizontal grid will be based on the vessel log
@@ -101,25 +103,27 @@ class grid(object):
                             length is specified as a timedelta64 object.
                     ping_number: The horizontal grid will be based on the ping number. Interval
                             length is specified as a integer.
-
-        round_interval_starts (bool): When set to True, the inner grid interval
-
-
-        layer_thickness (float): specify the layer thickness in meters
+                    Default: 'trip_distance_nmi'
+        round_interval_starts (bool): When set to True, the inner intervals of the grid will
+                be rounded to the interval length. For example, If your interval is distance
+                based and set at 0.5 nmi, and your data starts at 124.3 nmi and ends at 125.85,
+                the grid will have 4 intervals with the edges at 124.3, 124.5, 125.0, 125.5,
+                and 125.85.
+                    Default: True
+        layer_thickness (float): specify the layer thickness in meters.
+                    Default: 10.0 meters
         layer_axis (string): specify the processed_data attribute to use for the vertical
-                axis. Can be 'range', 'depth', or 'sample'
-
-        ignore_first_sample (bool): set ignore_first_sample to True to start the grid layers
-                at the second sample. Echoview discards the first sample and setting this
-                to True will match that behavior when integrating.
-
-                    default: True
-
-        color: color is a list of 3 floats [R, G, B] which defines the color
+                axis. Can be 'range' or 'depth'
+                    Default: 'depth'
+        color (list): color is a list of 3 floats [R, G, B] which defines the color
                 of the grid line when plotted. Values are in the range of [0,1]
+                    Default: [0,0,0] (black)
         name (string): name or label for the grid.
-        linestyle: linestyle is a string that defines the style of the line when plotted.
-        linewidth: linewidth is a float the defines the width of the line when plotted.
+                    Default: 'grid'
+        linestyle (string): linestyle is a string that defines the style of the line when plotted.
+                    Default: 'solid'
+        linewidth (float): linewidth is a float the defines the width of the line when plotted.
+                    Default: 1.0
 
         """
         super(grid, self).__init__()

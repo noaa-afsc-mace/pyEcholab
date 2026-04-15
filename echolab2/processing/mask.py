@@ -82,7 +82,7 @@ class mask(ping_data):
         This method creates a new mask array and axes given a mask size,
         type, and initial value.  Size must be a list/tuple defining the mask
         dimensions as [n_pings, n_samples]. For ping masks, it must at least
-        contain 1 elements and for sample masks it must contain 2. Because
+        contain 1 element and for sample masks it must contain 2. Because
         this mask is not based on an existing object, the axes will be empty.
 
         99% of the time you will call "like" to create a mask size to an
