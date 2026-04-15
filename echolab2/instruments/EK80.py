@@ -697,7 +697,7 @@ class EK80(object):
                             np.datetime64(new_datagram['timestamp'], '[ms]')
 
                 idx_data[new_datagram['ping_number']] = {'distance':new_datagram['distance'],
-                        'latitude':new_datagram['latitude'], 'longitude':new_datagram['latitude'],
+                        'latitude':new_datagram['latitude'], 'longitude':new_datagram['longitude'],
                         'timestamp':new_datagram['timestamp'], 'file_offset':new_datagram['file_offset']}
         except SimradEOF:
             #  we're at the end of the file
