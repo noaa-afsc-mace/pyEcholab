@@ -10,101 +10,96 @@ frequency differencing, just the techniques needed to implement it.
 """
 
 from matplotlib.pyplot import figure, show, subplots_adjust
-from echolab2.instruments import EK60
+from echolab2.instruments import echosounder
 from echolab2.plotting.matplotlib import echogram
 from echolab2.processing import mask, line
 import numpy as np
 
 
-# Read in some data.
-rawfiles = ['./data/EK60/DY1706_EK60-D20170625-T062521.raw',
-            './data/EK60/DY1706_EK60-D20170625-T063335.raw']
+# create a list of the files we want to read. The bottom detection files
+# are assumed to be co-located with the data files.
+#
+# NOTE! - This example assumes that the data files will contain data at
+#         18, 38, and 120 kHz and that bottom data will be available.
+#
+rawfiles = ['C:/EK Test Data/EK60/DY1807/raw/DY1807_EK60-D20180609-T123907.raw',
+            'C:/EK Test Data/EK60/DY1807/raw/DY1807_EK60-D20180609-T124557.raw']
 
-# Specify the matching bottom files.
-botfiles = ['./data/EK60/DY1706_EK60-D20170625-T062521.bot',
-            './data/EK60/DY1706_EK60-D20170625-T063335.bot']
+# read the data - this will return a dictionary keyed by channel ID,
+# containing the raw data objects with data for that channel. Bottom data
+# files will also be read if available.
+print("Reading .raw data...")
+raw_data = echosounder.read(rawfiles, frequencies=[18000, 38000, 120000])
+print(raw_data)
 
-# Create an instance of our EK60 class.
-ek60 = EK60.EK60()
+# create calibration objects from the raw data. This is not strictly
+# necessary in this case because if you do not provide calibration objects
+# when calling the get_* methods, the values from the raw file will be
+# used by default. If you were doing this for real, you would most likely
+# read cal data from EK80 calibration XML files or an Echoview .ecs file
+# using the appropriate echosounder class methods. 
+cal_objects = echosounder.get_calibration_from_raw(raw_data)
 
-# Read the raw files and store 18, 38, and 120 kHz.
-print('Reading the raw files...')
-ek60.read_raw(rawfiles, frequencies=[18000, 38000, 120000])
+# transform the raw data into Sv.
+Sv_data = echosounder.get_Sv(raw_data, calibration=cal_objects)
 
-# Read the .bot files.
-print('Reading the bot files...')
-ek60.read_bot(botfiles)
-
-# Get the raw_data objects from the ek60 object. We request data by
-# frequency which will return a dict keyed by frequency containing
-# the raw data.
-raw_data = ek60.get_channel_data(frequencies=[18000, 38000, 120000])
-
-# Get Sv and bottom data
-Sv_data = {18000: None, 38000: None, 120000: None}
-bottom_lines = {18000: None, 38000: None, 120000: None}
-for freq in raw_data:
-    if freq in Sv_data:
-
-        # get the first raw_data object for this frequency
-        data = raw_data[freq][0]
-
-        # get a calibration object for this channel - this returns a
-        # cal object populated with values from the raw data.
-        cal_obj = data.get_calibration()
-
-        # Get Sv and bottom data for this frequency
-        Sv_data[freq] = data.get_Sv(calibration=cal_obj)
-        print(Sv_data[freq])
-        bottom_lines[freq] = data.get_bottom(calibration=cal_obj)
-
-# Now create a mask for each frequency and apply surface and bottom lines
+# Now create a mask for each channel and apply surface and bottom lines
 # to these masks such that we mask out samples near the surface and below the
-# bottom.  We'll actually mask everything from 0.5m above the bottom down.
+# bottom. In this example, we will mask everything above 10m and below 0.5m
+# above the detected bottom.
 
-# First create a surface line.  Note that when we pass a scalar.
+masks = {}
+freq_chan_map = {}
+for chan in Sv_data.keys():
 
-masks = {18000: None, 38000: None, 120000: None}
-for freq in Sv_data.keys():
+    # Create an empty mask for this channel that matches our data array shape
+    masks[chan] = mask.mask(like=Sv_data[chan])
 
-    # Create a mask.
-    masks[freq] = mask.mask(like=Sv_data[freq])
+    # Next create a new line based on this channel's bottom line that is
+    # 0.5m shallower. This is our bottom exclusion line.
+    bot_exclusion_line = Sv_data[chan].bottom_line - 0.5
 
-    # Next create a new line that is 0.5m shallower. (in place operators will
-    # change the existing line.)
-    bot_line = bottom_lines[freq] - 0.5
+    # Now create a surface exclusion line at 10m RANGE. We use the line.like()
+    # constructor to return a line with ping times that match this channel
+    surf_exclusion_line = line.like(Sv_data[chan], data=10)
 
-    # Now create a surface exclusion line at 10m RANGE.
-    surf_line = line.line(ping_time=Sv_data[freq].ping_time, data=10)
+    # Now apply our lines to our mask. When applying a line to a mask, you
+    # will either set all samples that are above the line by setting
+    # apply_above=True, or you will set all samples that are below the line
+    # by setting apply_above=False. If you do not specify the value, the
+    # mask samples will be set to True by default.
+    #
+    # We are creating an EXCLUSION mask, so samples we want to ignore will
+    # be set to True.
 
-    # Now apply that line to our mask.  We apply the value True BELOW our
-    # line.  Note that we don't need to specify the value as True is the
-    # default.
-    masks[freq].apply_line(bot_line, apply_above=False)
+    # Set all samples below our bottom exclusion line to True
+    masks[chan].apply_line(bot_exclusion_line, apply_above=False)
 
-    # Now apply our surface line to this same mask.
-    masks[freq].apply_line(surf_line, apply_above=True)
+    # And set all sample above our surface exclusion line to True
+    masks[chan].apply_line(surf_exclusion_line, apply_above=True)
 
-    # Now use this mask to set sample data from 0.5m above the bottom
-    # downward to NaN.
-    Sv_data[freq][masks[freq]] = np.nan
+    # Now use this mask to set the masked sample data to NaN
+    Sv_data[chan][masks[chan]] = np.nan
 
-# Now lets compute some differences - the process_data class implements the
+    # While the channel ID is great for uniquely keying data, in this example
+    # we need to key the data by frequency. Since we're already looping
+    # thru the channels building the masks, we will create a dictionary to 
+    # map channel ID to frequency to make the differencing step below easier.
+    freq_chan_map[Sv_data[chan].frequency] = chan
+
+# Now lets compute some differences - the processed_data class implements the
 # basic Python arithmetic operators so we can simply subtract processed_data
-# objects like numeric objects.  Both,
-#
-# "regular": +, -, *, /  and  "in-place": +=, -=, *=, /=
-#
-# operators are implemented.  Regular operators return a new processed_data
-# object with the same general properties containing the results of your
-# operation.  The in-place operators will alter the data in the left hand side
-# argument.
+# objects like numeric objects.  Both, "regular" (+, -, *, /)  and 
+# "in-place" (+=, -=, *=, /=) operators are implemented.  Regular operators
+# return a new processed_data object with the same general properties containing
+# the results of your operation.  The in-place operators will alter the data of
+# the left hand side argument.
 
 # 18 - 38
-Sv_18m38 = Sv_data[18000] - Sv_data[38000]
+Sv_18m38 = Sv_data[freq_chan_map[18000]] - Sv_data[freq_chan_map[38000]]
 
 # 120 - 38
-Sv_120m38 = Sv_data[120000] - Sv_data[38000]
+Sv_120m38 = Sv_data[freq_chan_map[120000]] - Sv_data[freq_chan_map[38000]]
 
 
 # Now we'll generate some masks identifying samples that fall within various
@@ -160,17 +155,17 @@ subplots_adjust(left=0.1, bottom=.1, right=0.98, top=.90, wspace=None,
 ax = fig.add_subplot(4, 1, 1)
 # Use the view method to return a processed_data object that is a view into
 # our original data. We will plot all pings and samples 0-2000.
-v_data = Sv_data[18000].view((None, None, None),(0, 2000, None))
+v_data = Sv_data[freq_chan_map[18000]].view((None, None, None),(0, 2000, None))
 eg = echogram.Echogram(ax, v_data, threshold=[-70, -34])
 ax.set_title("Original 18 kHz Sv Data")
 
 ax = fig.add_subplot(4, 1, 2)
-v_data = Sv_data[38000].view((None, None, None), (0, 2000, None))
+v_data = Sv_data[freq_chan_map[38000]].view((None, None, None), (0, 2000, None))
 eg = echogram.Echogram(ax, v_data, threshold=[-70,-34])
 ax.set_title("Original 38 kHz Sv Data")
 
 ax = fig.add_subplot(4, 1, 3)
-v_data = Sv_data[120000].view((None, None, None), (0, 2000, None))
+v_data = Sv_data[freq_chan_map[120000]].view((None, None, None), (0, 2000, None))
 eg = echogram.Echogram(ax, v_data, threshold=[-70, -34])
 ax.set_title("Original 120 kHz Sv Data")
 
@@ -185,6 +180,3 @@ ax.set_title('Differencing results')
 
 # Display the results.
 show()
-
-
-pass

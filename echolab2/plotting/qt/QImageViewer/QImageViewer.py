@@ -233,7 +233,7 @@ class QImageViewer(QViewerBase):
         action = QAction('Adjust image properties...', self)
         action.triggered.connect(self.showAdjustmentsDialog)
         menu.addAction(action)
-        menu.exec_(self.mapToGlobal(pos));
+        menu.exec(self.mapToGlobal(pos));
 
 
     def showAdjustmentsDialog(self):

@@ -158,7 +158,7 @@ class imageAdjustmentsDlg(QDialog, ui_imageAdjustmentsDlg.Ui_imageAdjustmentsDlg
 
         #  update the contrast and brightness settings
         self.gbBrightnessContrast.setChecked(state['BrightnessContrastEnabled'])
-        self.brightnessSlider.setValue(state['Brightness'])
+        self.brightnessSlider.setValue(int(round(state['Brightness'])))
         self.bcAutomatic.setChecked(state['AutoContrast'])
         self.bcClipLimit.setValue(int(round(state['AutoBCClipLimit'] * 10)))
         self.bcManual.setChecked(state['ManualContrast'])
@@ -169,9 +169,9 @@ class imageAdjustmentsDlg(QDialog, ui_imageAdjustmentsDlg.Ui_imageAdjustmentsDlg
         self.gbColorCorrection.setChecked(state['ColorCorrectionEnabled'])
         self.cbAWB.setChecked(state['AutoWhiteBalance'])
         self.ccManual.setChecked(state['ManualColor'])
-        self.redSlider.setValue(state['R'])
-        self.greenSlider.setValue(state['G'])
-        self.blueSlider.setValue(state['B'])
+        self.redSlider.setValue(int(round(state['R'])))
+        self.greenSlider.setValue(int(round(state['G'])))
+        self.blueSlider.setValue(int(round(state['B'])))
         self.setCCMode()
 
         self.updatingState = False

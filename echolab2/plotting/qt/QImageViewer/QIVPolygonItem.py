@@ -110,8 +110,7 @@ class QIVPolygonItem(QGraphicsItem):
         self.polygon.clear()
 
         #  handle QRect and QRectF objects
-        if ((vertices.__class__.__name__.lower() == 'qrectf') or
-           (vertices.__class__.__name__.lower() == 'qrect')):
+        if (vertices.__class__.__name__.lower() == 'qrectf'):
             #  append the QRect vertices to our polygon
             self.polygon.append(vertices.topLeft())
             self.polygon.append(vertices.topRight())
@@ -119,6 +118,14 @@ class QIVPolygonItem(QGraphicsItem):
             self.polygon.append(vertices.bottomLeft())
             #  close the polygon
             self.polygon.append(vertices.topLeft())
+        elif (vertices.__class__.__name__.lower() == 'qrect'):
+            #  append the QRect vertices to our polygon
+            self.polygon.append(QPointF(vertices.topLeft()))
+            self.polygon.append(QPointF(vertices.topRight()))
+            self.polygon.append(QPointF(vertices.bottomRight()))
+            self.polygon.append(QPointF(vertices.bottomLeft()))
+            #  close the polygon
+            self.polygon.append(QPointF(vertices.topLeft()))
         else:
             #  assume this is a list of verts of
             for v in vertices:

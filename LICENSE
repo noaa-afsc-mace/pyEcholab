@@ -1,21 +1,30 @@
-MIT License
 
-Copyright (c) 2018 The Regents of the University of Colorado
-    National Oceanic and Atmospheric Administration:
-        Alaska Fisheries Science Center
-        Southwest Fisheries Science Center
-        Northeast Fisheries Science Center
-    Other contributors
+CC0 1.0 Universal
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+As a work of the United States Government, this project is in the public
+domain within the United States. Software, as understood herein, shall
+be broadly interpreted as being inclusive of algorithms, source code, and
+related documentation, all of which shall be furnished free of charge to
+the User.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+Additionally, we waive copyright and related rights in the work worldwide
+through the CC0 1.0 Universal public domain dedication.
+
+CC0 1.0 Universal Summary
+
+This is a human-readable summary of the Legal Code (read the full text at 
+https://creativecommons.org/publicdomain/zero/1.0/legalcode).
+
+No Copyright
+
+This project was exclusively created by employees of the United States
+Government as part of their official duties. Pursuant to U.S. Copyright law,
+this work is in the public domain within the United States. The authors are
+further waiving their rights to the work worldwide under copyright law,
+including all related and neighboring rights, to the extent allowed by law.
+
+The User can copy, modify, distribute and perform the work, even for commercial
+purposes, all without asking permission.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -24,3 +33,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+This notice, in its entirety, must be included in all copies or substantial
+portions of the Software.

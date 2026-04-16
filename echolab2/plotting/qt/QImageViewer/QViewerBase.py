@@ -117,6 +117,7 @@ rick.towler@noaa.gov
 
 """
 
+import qimage2ndarray
 from PyQt6.QtCore import *
 from PyQt6.QtGui import *
 from PyQt6.QtWidgets import *
@@ -200,6 +201,32 @@ class QViewerBase(QGraphicsView):
         self.createScene()
 
 
+
+    def renderedWidth(self):
+        '''
+        renderedWidth returns the actual on-screen width of this widget. It is similar
+        to the width() method except that it returns the widget width after OS
+        monitor scaling has been applied. For example, if you have a widget that is
+        400 pixels wide on a screen with scaling set to 150%, the widget will be
+        rendered with a width of 600.
+        '''
+
+        return int(round(self.width() * self.window().screen().devicePixelRatio()))
+
+
+    def renderedHeight(self):
+        '''
+        renderedHeight returns the actual on-screen height of this widget. It is similar
+        to the height() method except that it returns the widget height after OS
+        monitor scaling has been applied. For example, if you have a widget that is
+        400 pixels high on a screen with scaling set to 150%, the widget will be
+        rendered with a height of 600.
+        '''
+
+        return int(round(self.height() * self.window().screen().devicePixelRatio()))
+
+
+
     def setName(self, name):
         """
         setName sets the name property of Q*Viewer
@@ -218,15 +245,17 @@ class QViewerBase(QGraphicsView):
         if (enable and not self.glEnabled ):
             #  enable an OGL viewport widget
             self.glEnabled = True
-            self.setViewport(QGLWidget(QGLFormat(QGL.SampleBuffers| QGL.DirectRendering), self))
-            self.setRenderHints(QPainter.HighQualityAntialiasing)
-            self.setViewportUpdateMode(QGraphicsView.SmartViewportUpdate)
+            self.setViewport(QGLWidget(QGLFormat(QGL.FormatOption.SampleBuffers|
+                    QGL.FormatOption.DirectRendering), self))
+            self.setRenderHints(QPainter.RenderHint.Antialiasing)
+            self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.FullViewportUpdate)
             self.update()
-        elif (self.glEnabled  and not enable):
+        elif (self.glEnabled and not enable):
             #  enable a non OGL viewport widget
             self.setViewport(0)
-            self.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform |
-                        QPainter.TextAntialiasing)
+            self.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform |
+                        QPainter.RenderHint.TextAntialiasing)
+            self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.MinimalViewportUpdate)
             self.update()
             self.glEnabled = False
 
@@ -286,11 +315,73 @@ class QViewerBase(QGraphicsView):
         values would be "jpg", "jpeg", or "png".
         """
 
-        pixmap = QPixmap()
-        pixmap.grabWidget(self)
+        pixmap = self.renderView()
         ok = pixmap.save(filename)
         if not ok:
             raise IOError('Unable to save image ' + filename)
+
+
+    def renderView(self, width=None, height=None, asNDarray=False):
+        '''
+        Render the full view to a pixmap or numpy array. The view is what you see
+        on the screen and includes base images, marks, lines, HUD, etc.
+        '''
+
+        #  if width/height is not provided render the view at the on-screen resolution
+        if width is None:
+            width = self.renderedWidth()
+        if height is None:
+            height = self.renderedHeight()
+
+        #  get the view as a pixmap
+        pixmap = self.grab()
+
+        #  scale the image if the on-screen resolution is != specified resolution
+        if pixmap.height() != height or pixmap.width() != width:
+            pixmap = pixmap.scaled(QSize(width,height), Qt.AspectRatioMode.IgnoreAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation)
+
+        if asNDarray:
+            image = pixmap.toImage()
+            return qimage2ndarray.byte_view(image)
+        else:
+            return pixmap
+
+
+    def renderScene(self, width=None, height=None, asNDarray=False):
+        """
+        Render scene to a QImage or numpy array. This renders the entire image, marks, and lines
+        regardless of the current view. The rendered image resolution will be defined by the
+        scene size but you can override that by passing a width and height.
+        """
+
+        if width is None:
+            width = self.scene.width()
+        if height is None:
+            height = self.scene.height()
+
+        #  create the empty image to render into and fill
+        image = QImage(width, height, QImage.Format.Format_ARGB32)
+        image.fill(0)
+
+        #  create the painter to render the image
+        painter = QPainter(image)
+        painter.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform |
+                            QPainter.RenderHint.TextAntialiasing)
+
+        #TODO: Need to figure out how to apply "sticky" scaling from the view.
+        #      Render to a hidden view that's the same size as the scene?
+
+        #  render it
+        self.scene.render(painter)
+
+        #  return data as the requested type
+        if asNDarray:
+            #  return as ND array
+            return qimage2ndarray.byte_view(image)
+        else:
+            #  return as QImage
+            return image
 
 
     def saveScene(self, filename, width=None, height=None):
@@ -302,25 +393,8 @@ class QViewerBase(QGraphicsView):
         extension. Typical values would be "jpg", "jpeg", or "png".
 
         """
-
-        if width is None:
-            width = self.scene.width()
-        if height is None:
-            height = self.scene.height()
-
-        #  create the empty image to render into and fill
-        image = QImage(width, height,QImage.Format_ARGB32)
-        image.fill(0)
-
-        #  create the painter to render the image
-        painter = QPainter(image)
-        painter.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
-
-        #  render it
-        self.scene.render(painter)
-
-        #TODO: Need to figure out how to apply "sticky" scaling from the view.
-        #      Render to a hidden view that's the same size as the scene?
+        #  call renderScene to get a QImage of the current scene
+        image = self.renderScene(width=width, height=height)
 
         #  and save
         ok = image.save(filename)
@@ -501,7 +575,7 @@ class QViewerBase(QGraphicsView):
 
     def addText(self, position, text, size=10, font='helvetica', italics=False, weight=-1,
                 color=[0,0,0], alpha=255, halign='left', valign='top', name='QIVText',
-                selectable=False, movable=False):
+                selectable=False, movable=False,drawBackdrop=False, backdropColor=[0,0,0]):
         """
         Add text to the scene given the text and position. The function returns the reference
         to the QIVMarkerText object that is added to the scene.
@@ -538,7 +612,7 @@ class QViewerBase(QGraphicsView):
         #  create a QIVMarkerText based on the input options
         textItem = QIVMarkerText(position, text, size=size, font=font,
                 italics=italics, weight=weight, color=color, alpha=alpha, halign=halign,
-                valign=valign, name=name, view=self, selectable=selectable, movable=movable)
+                valign=valign, name=name, view=self, selectable=selectable, movable=movable,drawBackdrop=False, backdropColor=[0,0,0])
 
         #  add the text directly to the scene
         self.scene.addItem(textItem)
@@ -654,7 +728,7 @@ class QViewerBase(QGraphicsView):
 
         """
 
-        gridItem = QIVGrid(layer_verts, layer_edges, interval_verts, interval_edges, color=color,
+        gridItem = QIVGrid(layer_verts, layer_labels, interval_verts, interval_labels, color=color,
                              thickness=thickness, alpha=alpha, view=self)
 
         #  add the grid to the scene
@@ -811,7 +885,6 @@ class QViewerBase(QGraphicsView):
 
         #  update the viewport
         self.viewport().update()
-
 
     def zoomToPoint(self, point, zoomLevel):
         """

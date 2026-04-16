@@ -4,7 +4,7 @@ from PyQt6.QtGui import *
 import numpy
 import datetime
 from .QViewerBase import QViewerBase
-
+import qimage2ndarray
 
 class QEchogramViewer(QViewerBase):
 
@@ -39,7 +39,7 @@ class QEchogramViewer(QViewerBase):
         pass
 
 
-    def setEchogramFromArray(self, echogramData, xaxis=None, yaxis=None, scale=True):
+    def setEchogramFromArray(self, echogramData, xaxis=None, yaxis=None, scale=True,multifrequency=False):
         """
         setEchogramFromArray sets the echogram data from a 2d numpy array containing
         Sv or Ts data. You can also specify 1d vectors representing the axes units,
@@ -54,11 +54,15 @@ class QEchogramViewer(QViewerBase):
         """
 
         #  set the echogram data
+        self.multifrequency=multifrequency
         self.echogramData =  numpy.flipud(numpy.rot90(echogramData,1)).copy()
-        nSamples, nPings = self.echogramData.shape
+        if self.multifrequency:
+            nSamples, nPings, nChannels = self.echogramData.shape
+        else:
+            nSamples, nPings = self.echogramData.shape
 
         #  set the data type, indexed or not indexed
-        self.isIndexedData = not scale;
+        self.isIndexedData = not scale
 
         #  set the X axis values
         if (type(xaxis) is type(None)):
@@ -68,7 +72,7 @@ class QEchogramViewer(QViewerBase):
                 self.xAxis = xaxis
 
                 #  check if this axis is time based and if so, serialize
-                if (type(xaxis[0]) in (numpy.datetime64,)):
+                if (type(xaxis[0]) in (numpy.datetime64,datetime.datetime)):
                     self.__xTimeAxis = self.serializeTime(xaxis)
                 else:
                     self.__xTimeAxis = None
@@ -83,7 +87,7 @@ class QEchogramViewer(QViewerBase):
                 self.yAxis = yaxis
 
                 #  check if this axis is time based and if so, serialize
-                if (type(yaxis[0]) in (numpy.datetime64,)):
+                if (type(yaxis[0]) in (numpy.datetime64,datetime.datetime)):
                     self.__yTimeAxis = self.serializeTime(yaxis)
                 else:
                     self.__yTimeAxis = None
@@ -102,7 +106,6 @@ class QEchogramViewer(QViewerBase):
         #  update the echogram pixmap
         self.updateEchogram()
 
-
     def updateEchogram(self):
 
         #  make sure we have data to work with
@@ -110,28 +113,35 @@ class QEchogramViewer(QViewerBase):
             #  nothing to do - no data to plot
             return
 
-        if (self.isIndexedData == False):
-            #  scale the data to the color table
-            echoData = numpy.round((self.echogramData - self.threshold[0]) / (self.threshold[1] -
-                                    self.threshold[0]) * self.__ctLength)
+        if self.multifrequency:
+            image = qimage2ndarray.array2qimage(self.echogramData, normalize=(self.threshold[0], self.threshold[1]))
+#            echoData = numpy.interp(self.echogramData,[-70,-20],[0,255]).astype('uint8')
+#            image=self.rgb2qimage(echoData)
 
-            badData = numpy.isnan(echoData)
-            echoData[echoData < 0] = 0
-            echoData[echoData > self.__ctLength-1] = self.__ctLength-1
-            echoData[badData] = 14
-            echoData = echoData.astype(numpy.uint8)
+                #image = QImage(echoData.data,echoData.shape[0], echoData.shape[1], echoData.shape[2], QImage.Format.Format_RGB888)
+        else:
 
-        #  create the image object from the echogram data
-        image = QImage(echoData.data, echoData.shape[1], echoData.shape[0], echoData.shape[1],
-                       QImage.Format_Indexed8)
-        image.setColorTable(self.__colorTable)
+            if (self.isIndexedData == False):
+                #  scale the data to the color table
+                echoData = numpy.round((self.echogramData - self.threshold[0]) / (self.threshold[1] -
+                                        self.threshold[0]) * self.__ctLength)
 
-        #  and convert to ARGB
-        image = image.convertToFormat(QImage.Format_ARGB32)
+                badData = numpy.isnan(echoData)
+                echoData[echoData < 0] = 0
+                echoData[echoData > self.__ctLength-1] = self.__ctLength-1
+                echoData[badData] = 14
+                echoData = echoData.astype(numpy.uint8)
 
-        #  apply alpha mask
-        if (self.echogramAlphaMask):
-            image.setAlphaChannel(self.echogramAlphaMask)
+                #  create the image object from the echogram data
+                image = QImage(echoData.data, echoData.shape[1], echoData.shape[0], echoData.shape[1],QImage.Format.Format_Indexed8)
+                image.setColorTable(self.__colorTable)
+
+                #  and convert to ARGB
+                image = image.convertToFormat(QImage.Format.Format_ARGB32)
+
+                #  apply alpha mask
+                if (self.echogramAlphaMask):
+                    image.setAlphaChannel(self.echogramAlphaMask)
 
         #  get a pixmap to display
         self.imgPixmap = QPixmap().fromImage(image)
@@ -184,7 +194,7 @@ class QEchogramViewer(QViewerBase):
         #  [x,y] lists. This isn't intuitive for items placed at a single coord
         #  like text and marks so we check if this is a single [x,y] list and
         #  wrap it in a list if so.
-        if not isinstance(position[0], list):
+        if not isinstance(position, list):
             position = [position]
 
         if (not useXY):
@@ -279,16 +289,16 @@ class QEchogramViewer(QViewerBase):
 
         #  create the line
         line = super(QEchogramViewer, self).addLine(verts, isCosmetic=True, **kwargs)
-        
+
         # for echograms, we shift the line a half sample to center the line vertices horizontally
         line.moveBy(0.5,0)
-        
+
         return line
 
 
     def addGrid(self, grid, useXY=False, **kwargs):
         """
-        Add a grid to the echogram. The grid must be an instance of pyEcholab.processing.grid 
+        Add a grid to the echogram. The grid must be an instance of pyEcholab.processing.grid
 
 
         If you set the useXY keyword to true, this method will not transform the coordinates. This can
@@ -314,7 +324,7 @@ class QEchogramViewer(QViewerBase):
         #  the start to end of the layers (for the interval line).
         layer_verts = []
         interval_verts = []
-        
+
         for layer in grid.layer_edges:
             layer_verts.append([grid.interval_edges[0], layer])
             layer_verts.append([grid.interval_edges[-1], layer])
@@ -435,10 +445,10 @@ class QEchogramViewer(QViewerBase):
         upper right and lower left corner points. The units are determined by the
         axes
         """
-        
+
         startIdx = (numpy.abs(self.yAxis - startDepth)).argmin()
         endIdx = (numpy.abs(self.yAxis - EndDepth)).argmin()
-        
+
         hScaleRatio = float(self.scene.height() - 2) / float(endIdx - startIdx)
         self.scale(hScaleRatio, hScaleRatio)
 
@@ -488,7 +498,7 @@ class QEchogramViewer(QViewerBase):
         pixelPoints = []
 
         #  first determine what form our vertices are in
-        if (len(axesVerts) > 2):
+        if (len(axesVerts) > 2): # or (len(axesVerts) == 2 and len(axesVerts[0]) == 2):
             #  we have been passed a list of [x,y] tuples
 
             #  check if we're dealing with time on any of our axes
@@ -515,14 +525,14 @@ class QEchogramViewer(QViewerBase):
                 #  append this converted vertex to the list of verts to return
                 pixelPoints.append([xIdx,yIdx])
 
-        else:
+        elif (len(axesVerts) == 2):
             #  we have been passed a list of lists 2 elements long
             if (type(axesVerts[0][0]) in (datetime.datetime, numpy.datetime64)):
                 xIsTime = True
             else:
                 yIsTime = True
 
-            for i in range(len(axesVerts[0])):
+            for i in list(range(len(axesVerts[0]))):
 
                 #  check if we're dealing with time on any of our axes
                 if xIsTime:
@@ -540,6 +550,28 @@ class QEchogramViewer(QViewerBase):
                     #  append this converted vertex to the list of verts to return
                 pixelPoints.append([xIdx,yIdx])
 
+        else:
+            #  we have been passed a list of lists 1 element long
+            if (type(axesVerts[0][0]) in (datetime.datetime, numpy.datetime64)):
+                xIsTime = True
+            else:
+                yIsTime = True
+            #  check if we're dealing with time on any of our axes
+            if xIsTime:
+                xIdx = (numpy.abs(self.__xTimeAxis - self.serializeTime(axesVerts[0][0]))).argmin()
+            else:
+                #  find the closest match to this x value
+                xIdx = (numpy.abs(self.xAxis - axesVerts[0][0])).argmin()
+            if yIsTime:
+                #  serialize this vertex's time value and find closest match
+                yIdx = (numpy.abs(self.__yTimeAxis - self.serializeTime(axesVerts[0][1]))).argmin()
+            else:
+                #  find the closest match to this y value
+                yIdx = (numpy.abs(self.yAxis - axesVerts[0][1])).argmin()
+
+                #  append this converted vertex to the list of verts to return
+            pixelPoints.append([xIdx,yIdx])
+
         return pixelPoints
 
 
@@ -551,12 +583,17 @@ class QEchogramViewer(QViewerBase):
         '''
 
         #  convert datetime to numpy datetime64
-        if (isinstance(times, datetime.datetime)):
-            times = numpy.datetime64(times)
+        if isinstance(times,numpy.ndarray):
+            if (isinstance(times[0], datetime.datetime)):
+                times = [numpy.datetime64(x) for x in times]
+        else:# not a list
+            if (isinstance(times, datetime.datetime)):
+                times = numpy.datetime64(times)
 
         epoch = numpy.datetime64('1970-01-01')
         serialTime = (times - epoch)
         return serialTime
+
 
 
     def emitPressEvent(self, clickLocation, button, currentKbKey, items):
@@ -578,6 +615,23 @@ class QEchogramViewer(QViewerBase):
         """
         #  convert the mouse location to echogram coordinates
         convertedLocation = self.pixelToAxes(location)
+
+        # get Sv at location
+        y_ind = int(round(location.x()))
+        x_ind = int(round(location.y()))
+        if isinstance(self.echogramData,numpy.ndarray):
+            if len(self.echogramData.shape)>2:
+                if x_ind<self.echogramData.shape[0] and y_ind<self.echogramData.shape[1]:
+                    Sv=self.echogramData[x_ind,y_ind,:]
+                    for i in range(len(Sv)):
+                        convertedLocation.append('%.0f dB'%Sv[i])
+
+            else:
+                if x_ind<self.echogramData.shape[0] and y_ind<self.echogramData.shape[1]:
+                    Sv=self.echogramData[x_ind,y_ind]
+                else:
+                    Sv=0
+                convertedLocation.append('%.2f dB'%Sv)
 
         #  emit the mouseMoveEvent signal
         self.mouseMove.emit(self, convertedLocation, currentKbKey, draggedItems, items)

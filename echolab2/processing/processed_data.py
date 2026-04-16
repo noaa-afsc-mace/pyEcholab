@@ -484,26 +484,42 @@ class processed_data(ping_data):
         # processed_data object.
         for attr_name in self._data_attributes:
             attr = getattr(self, attr_name)
-            if attr.ndim == 2:
-                # 2d arrays can just be sliced as usual.
-                setattr(p_data, attr_name, attr.__getitem__((ping_slice,
-                                                             sample_slice)))
-            else:
-                # For 1d arrays, we need to make sure we pick up the correct
-                # slice.
-                if attr.shape[0] == self.n_pings:
-                    # This is a ping axis value.  Slice and set the new
-                    # object's attribute.
-                    sliced_attr = attr.__getitem__(ping_slice)
-                    setattr(p_data, attr_name, sliced_attr)
-                    # Update the n_pings attribute.
-                    p_data.n_pings = sliced_attr.shape[0]
+
+            if isinstance(attr, np.ndarray):
+
+                if attr.ndim == 2:
+                    # 2d arrays can just be sliced as usual.
+                    setattr(p_data, attr_name, attr.__getitem__((ping_slice,
+                                                                sample_slice)))
+                elif attr.ndim == 3:
+                    # 3d arrays can just be sliced as usual but for now we aren't
+                    # slicing in the frequency dimension
+                    freq_slice = slice(None, None, None)
+                    setattr(p_data, attr_name, attr.__getitem__((freq_slice,ping_slice,
+                                                                sample_slice)))
                 else:
-                    # We'll assume this is a sample axis value - slice and set.
-                    sliced_attr = attr.__getitem__(sample_slice)
-                    setattr(p_data, attr_name, sliced_attr)
-                    # Update the n_samples attribute.
-                    p_data.n_samples = sliced_attr.shape[0]
+                    # For 1d arrays, we need to make sure we pick up the correct slice.
+                    if attr.shape[0] == self.n_pings:
+                        # This is a ping axis value.  Slice and set the new object's attribute.
+                        sliced_attr = attr.__getitem__(ping_slice)
+                        setattr(p_data, attr_name, sliced_attr)
+                        # Update the n_pings attribute.
+                        p_data.n_pings = sliced_attr.shape[0]
+                    else:
+                        # We'll assume this is a sample axis value - slice and set.
+                        sliced_attr = attr.__getitem__(sample_slice)
+                        setattr(p_data, attr_name, sliced_attr)
+                        # Update the n_samples attribute.
+                        p_data.n_samples = sliced_attr.shape[0]
+
+            elif isinstance(attr, line.line):
+                # We have to handle lines a bit differently. First create a copy of our line
+                sliced_attr = line.like(attr)
+                # Then slice the relevant data arrays
+                sliced_attr.ping_time = attr.ping_time.__getitem__(ping_slice)
+                sliced_attr.data = attr.data.__getitem__(ping_slice)
+                # and then update the line in our new sliced pd object
+                setattr(p_data, attr_name, sliced_attr)
 
         # Update the sample_offset if we're slicing on the sample axis.
         if sample_slice.start:
@@ -906,8 +922,11 @@ class processed_data(ping_data):
         else:
             data_is_log = False
 
+        # Call our parent's resample_by_axes method - this handles resampling of
+        # all numpy based data attributes
         super().resample_by_axes(v_height, h_length, v_axis=v_axis, h_axis=h_axis, method=method)
 
+        # Convert back to log if needed
         if data_is_log:
             self.to_log()
 
@@ -2288,8 +2307,9 @@ class processed_data(ping_data):
                         msg = msg + padding + attr_name + " (%u,%u)\n" % (
                             attr.shape[0], attr.shape[1])
                 elif isinstance(attr, list):
-                        msg = msg + padding + attr_name + " (%u)\n" % (len(
-                            attr))
+                    msg = msg + padding + attr_name + " (%u)\n" % (len(attr))
+                elif isinstance(attr, line.line):
+                    msg = msg + padding + attr_name + " (%u)\n" % (len(attr.data))
                 n_attr += 1
         else:
             msg = msg + "  processed_data object contains no data\n"
