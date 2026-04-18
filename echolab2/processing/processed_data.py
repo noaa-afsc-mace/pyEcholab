@@ -2795,11 +2795,12 @@ def read_ev_csv(channel_id, frequency, ev_csv_filename, data_type='Ts',
 
         return p_data
 
+
 def create_test_data(n_pings, n_samples, block_shape=(20,20), 
         block_values=(-70,-30,-50,-90), data_type='Sv', frequency=38000, 
         start_time=np.datetime64('2026-02-24T10:30'), ping_interval=np.timedelta64(1, 's'),
         jitter_time=True, jitter_range=(0,250), sample_dtype=np.float32,
-        channel_id='pyEcholab Synthetic', draft=9.8, sample_thickness=0.035, range_start=1.0e-20,
+        channel_id='pyEcholab Synthetic', draft=9.8, sample_thickness=0.035, range_start=0,
         fill_data_is_log=True, sample_interval=4.8e-05):
     '''create_test_data creates a processed_data object containing the specified data
     values as blocks of the specified size. You can create a number of different patterns
@@ -2807,18 +2808,29 @@ def create_test_data(n_pings, n_samples, block_shape=(20,20),
     with a data value. If the array size is not evenly divisible by your block sizes, the
     remaining samples will be filled with partial blocks.
 
-               n_pings(int):
-               n_samples(int):
-               block_shape (array of ints):
-    block_values(array): This array contains the values that are used to fill the blocks
+                   n_pings(int): The number of pings in the fake sample data array.
+                 n_samples(int): The number of samples in the fake sample data array.
+    block_shape (array of ints):
+            block_values(array): This array contains the values that are used to fill the
+                                 blocks.
         start_time (datetime64): The starting ping time
     ping_interval (timedelta64): a timedelta64 object representing the ping interval
              jitter_time (book): set to True to jitter the ping time
             jitter_range(tuple): Set to a tuple of value that represent the min and max
                                  ping time jitter in milliseconds
-                  draft (float): Set this to the transducer draft
-       sample_thickness (float): Set this to the sample thickness in meters
+                  draft (float): Set this to the transducer draft in meters.
+                                 Default: 9.8
+       sample_thickness (float): Set this to the sample thickness in meters.
+                                 Default: 0.035
                channel_id (str): 
+            range_start (float): Set this to the starting value for your range. Range is
+                                 computed as :
+
+                                 range = arange(0, n_samples) * sample_thickness) + range_start
+
+                                 If range_start is 0, the first sample will be adjusted to
+                                 a range of 1e-20 to keep the math happy.
+                                 Default: 0
               frequency (float): Set frequency to the frequency of the data.
                 data_type (str): Set this to a string specifying the export data type. The
                                  data type can be:
@@ -2879,7 +2891,6 @@ def create_test_data(n_pings, n_samples, block_shape=(20,20),
         ping_times = np.datetime64(start_time).astype('datetime64[ms]') + steps
         return ping_times
 
-
     # create an empty processed_data object
     p_data = processed_data(channel_id, frequency, data_type)
 
@@ -2903,10 +2914,12 @@ def create_test_data(n_pings, n_samples, block_shape=(20,20),
     #  set sample thickness
     p_data.sample_thickness = sample_thickness
 
-    #  create the range attribute
+    # Create the range attribute - Samples are centered on the range value
     range = np.arange(0, n_samples, dtype=sample_dtype)
-    range = (range * p_data.sample_thickness) + (p_data.sample_thickness / 2.0)
-    range[0] = range_start
+    range = (range * p_data.sample_thickness) + range_start
+    # If the first sample is at range 0, nudge it a wee little bit
+    if range[0] == 0:
+        range[0] = 1e-20
     p_data.add_data_attribute('range', range)
 
     # set some additional attributes

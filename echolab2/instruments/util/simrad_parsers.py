@@ -878,6 +878,9 @@ class SimradXMLParser(_SimradDatagramParser):
             'Version':[str,'application_version',''],
             'FileFormatVersion':[str,'file_format_version',''],
             'TimeBias':[str,'time_bias','']})
+    
+    ping_mode_xml_map = OrderedDict({
+            'Mode':[str,'ping_mode','']})
 
     #env_xdcr_xml_map = OrderedDict({
     #        'SoundSpeed':[float,'transducer_sound_speed','']})
@@ -1130,6 +1133,11 @@ class SimradXMLParser(_SimradDatagramParser):
                         h = root_node.find('Header')
                         dict_to_dict(h.attrib, data['configuration'][channel_id],
                                      self.header_xml_map)
+                        
+                        ping_mode_node = root_node.find('./ActivePingMode')
+                        if ping_mode_node is not None:
+                            dict_to_dict(ping_mode_node.attrib, data['configuration'][channel_id],
+                                     self.ping_mode_xml_map)
 
             elif data['subtype'] == 'initialparameter':
 

@@ -9,8 +9,8 @@ For this example, assume that we want to compute the frequency difference
 between some channels in our data file. Unfortunately this sounder system
 was not installed by a certified Kongsberg technician and the various
 channels drop a lot of pings. When you read these files into pyEcholab
-the axes of the various channels do not match so you cannot subtract them
-to get your difference.
+the alongship axes of the various channels do not match so you cannot 
+subtract them to get your difference.
 
 To overcome this, the match_pings method alters the ping time axes
 in your data object with that of the "other" object. Ping times in the
@@ -34,6 +34,11 @@ time axis as the first channel by adding pings the first channel has
 that the other channels lack, or removing pings the other channels have
 but the first channel lacks.
 
+
+Note that the match_pings method only operates on the alongship axis.
+If your data's range/depth axes differ (as is common with EK80 data)
+you will have to resample vertically using the ping_data.resample_by_axes()
+method. 
 """
 
 import numpy as np
@@ -60,7 +65,7 @@ remove_from_match = True
 
 
 # Specify a data file for this test
-rawfiles = ['./data/EK60/DY1706_EK60-D20170625-T062521.raw']
+rawfiles = ['./data/EK60/DY1603/raw/DY1603_EK60-D20160308-T115724.raw']
 
 # Create an instance of the EK60 instrument. This is the top level object used
 # to interact with EK60 and  data sources.

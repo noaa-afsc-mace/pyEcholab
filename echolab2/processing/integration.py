@@ -371,7 +371,6 @@ class integrator(object):
         else:
             p_data_is_log = False
 
-
         is_3d = len(integration_grid.grid_data.data.shape) > 2
         f_range = range(integration_grid.grid_data.data.shape[0]) if is_3d else [None]
 

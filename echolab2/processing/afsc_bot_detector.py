@@ -16,7 +16,7 @@
 """
 
 | Original code developed by:  Nathan Lauffenburger  <nathan.lauffenburger@noaa.gov>
-|                                        Rick Towler   <rick.towler@noaa.gov>
+|                              Rick Towler   <rick.towler@noaa.gov>
 | National Oceanic and Atmospheric Administration (NOAA)
 | Alaska Fisheries Science Center (AFSC)
 | Midwater Assessment and Conservation Engineering Group (MACE)
@@ -135,7 +135,6 @@ class afsc_bot_detector(ping_data):
         return bot_line
 
 
-
     def get_echo_envelope(self, data, echo_peak, threshold,
             range_vector, range_min, contiguous=True):
         '''
@@ -169,7 +168,7 @@ class afsc_bot_detector(ping_data):
 
                 #  calculate the interpolated range for our near envelope edge
                 min_range = np.interp(threshold, [data[previous_sample], data[min_sample]],
-                                         [range_vector[previous_sample], range_vector[min_sample]])
+                        [range_vector[previous_sample], range_vector[min_sample]])
         except:
             min_range = np.nan
 

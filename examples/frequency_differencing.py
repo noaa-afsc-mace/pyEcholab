@@ -5,8 +5,11 @@ processed_data.zeros_like() method to get an processed_data array we can use
 to fill with the results of our simple analysis.  Lastly, it shows how to use
 the processed_data.view() method to plot a subset of the data.
 
-Note that this example is not intended to be an example of how to really do
-frequency differencing, just the techniques needed to implement it.
+Note that this is not intended to be an example of how to really do
+frequency differencing, just the techniques needed to implement it. Also,
+depending on the data, the displayed result will most likely underwhelm.
+Again, just demonstrating the use of the library. It is up to you to do
+exciting science with it.
 """
 
 from matplotlib.pyplot import figure, show, subplots_adjust
@@ -16,14 +19,26 @@ from echolab2.processing import mask, line
 import numpy as np
 
 
-# create a list of the files we want to read. The bottom detection files
-# are assumed to be co-located with the data files.
+# create a list of the files we want to read. The read method will accept a
+# filename as a string, or a list of filenames as strings to read. If you
+# provide a list, the files will be read sequentially. Note that raw files
+# can be large, and their in-memory representation is larger still. You will
+# need to keep this in mind when processing a large number of files. Often
+# it is best to process one or two at a time.
+#
+# The bottom detection files are assumed to be co-located with the data files.
 #
 # NOTE! - This example assumes that the data files will contain data at
 #         18, 38, and 120 kHz and that bottom data will be available.
 #
-rawfiles = ['C:/EK Test Data/EK60/DY1807/raw/DY1807_EK60-D20180609-T123907.raw',
-            'C:/EK Test Data/EK60/DY1807/raw/DY1807_EK60-D20180609-T124557.raw']
+# NOTE! - This example currently only works with EK60 data where channels
+#         share the sample sample interval (and thus sample thickness) and
+#         ping number (meaning no dropped pings in a channel.) Resampling
+#         and match_pings methods exist to correct this, but they have not
+#         been worked to this example. It is on the "To Do" list.
+#
+rawfiles = ['./data/EK60/DY1603/raw/DY1603_EK60-D20160308-T115724.raw',
+            './data/EK60/DY1603/raw/DY1603_EK60-D20160308-T121526.raw']
 
 # read the data - this will return a dictionary keyed by channel ID,
 # containing the raw data objects with data for that channel. Bottom data
@@ -148,31 +163,39 @@ diff_results[fish] = 18
 
 # Create a matplotlib figure to plot our echograms on.
 fig = figure()
-subplots_adjust(left=0.1, bottom=.1, right=0.98, top=.90, wspace=None,
-                hspace=1.5)
+subplots_adjust(left=0.1, bottom=.1, right=0.98, top=.93, wspace=None,  hspace=1.5)
 
 # Plot the original data.
 ax = fig.add_subplot(4, 1, 1)
-# Use the view method to return a processed_data object that is a view into
-# our original data. We will plot all pings and samples 0-2000.
-v_data = Sv_data[freq_chan_map[18000]].view((None, None, None),(0, 2000, None))
-eg = echogram.Echogram(ax, v_data, threshold=[-70, -34])
-ax.set_title("Original 18 kHz Sv Data")
 
+# Use the view method to return a processed_data object that is a view into
+# our original data. To create a view, you pass tuples that define the slices
+# on each axis. The slices are in the form (start, stop, stride). Passing None
+# for a slice argument will result in the default for that argument. For example,
+# passing None for start will start at element 0. None for end will end at -1,
+# and None for stride will result in a stride of 1. For this example we want to
+# plot every ping so the ping slice is (None, None, None) but we'll limit the
+# samples from 0-2100 so the sample slice will be (0, 2100, None)
+v_data = Sv_data[freq_chan_map[18000]].view((None, None, None),(0, 2100, None))
+
+#  Now pass the processed_data view to echogram to plot
+eg = echogram.Echogram(ax, v_data, threshold=[-80, -36])
+ax.set_title("18 kHz Sv Data")
+
+#  now plot the other frequencies doing the same thing
 ax = fig.add_subplot(4, 1, 2)
-v_data = Sv_data[freq_chan_map[38000]].view((None, None, None), (0, 2000, None))
-eg = echogram.Echogram(ax, v_data, threshold=[-70,-34])
-ax.set_title("Original 38 kHz Sv Data")
+v_data = Sv_data[freq_chan_map[38000]].view((None, None, None), (0, 2100, None))
+eg = echogram.Echogram(ax, v_data, threshold=[-80,-36])
+ax.set_title("38 kHz Sv Data")
 
 ax = fig.add_subplot(4, 1, 3)
-v_data = Sv_data[freq_chan_map[120000]].view((None, None, None), (0, 2000, None))
-eg = echogram.Echogram(ax, v_data, threshold=[-70, -34])
-ax.set_title("Original 120 kHz Sv Data")
-
+v_data = Sv_data[freq_chan_map[120000]].view((None, None, None), (0, 2100, None))
+eg = echogram.Echogram(ax, v_data, threshold=[-80, -36])
+ax.set_title("120 kHz Sv Data")
 
 # Plot our differencing data.
 ax = fig.add_subplot(4, 1, 4)
-v_results = diff_results.view((None, None, None), (0, 2000, None))
+v_results = diff_results.view((None, None, None), (0, 2100, None))
 # note that we set the threshold to something that will work with the values
 # we assigned to our results.
 eg = echogram.Echogram(ax, v_results, threshold=[0, 20])

@@ -74,40 +74,48 @@ class Echogram(object):
 
     def __init__(self, mpl_container, data_object, data_attribute=None,
                  threshold=None, cmap=None, frequency=None, grid=None,
-                 y_axis=None, x_axis=None):
+                 y_axis=None, x_axis=None, show_grid=True, adjust_x=True):
         """Initializes the Echogram class.
 
         Args:
             mpl_container: A figure or axis (or None if creating a figure
-                           from scratch).
-            data_object (object): A RawData or ProcessedData object.
+                    from scratch).
+            data_object (object): A raw_data or processed_data object.
             data_attribute (str): Optional. Specify the data attribute name of the
-                                  attribute you want to plot. This is only required
-                                  if you are passing something other than a
-                                  ProcessedData or RawData object as the data_object.
+                    attribute you want to plot. This is only required if you are
+                    passing something other than a processed_data or raw_data object
+                    as the data_object.
             threshold (list): lower and upper thresholds in dB. Default is to scale
-                              display thresholds to the min/max data values.
+                    display thresholds to the min/max data values.
             cmap (str or Colormap instance):  A colormap for the plot. The default is
-                               the Simrad EK500 color table.
+                    the Simrad EK500 color table.
             frequency (float): When plotting Sv(f) data objects, you can specify the
-                               specific frequency to plot. If you are plotting Sv(f)
-                               and do not specify a frequency, power will be averaged
-                               across the band
+                    specific frequency to plot. If you are plotting Sv(f) and do not
+                    specify a frequency, power will be averaged across the band.
+                        Default: None
             grid (object): Optional. An instance of echolab2.processing.grid object
-                           that will be plotted. If no grid object is provided, a
-                           default grid will be applied.
+                    that will be plotted. If no grid object is provided, a default
+                    grid will be applied.
+                        Default: None
+            show_grid (bool): Set to True to plot a grid. False to not plot a grid.
+                        Default: True
             y_axis (str): Optional. Specify the Y axis units to use. Set to 'range'
-                          to use range as the Y axis, 'depth' for depth, and 'sample'
-                          for sample number. When None is specified, we'll look for
-                          range first and use that if available, then depth. If
-                          neither are available then sample number will be used.
-                          Default is None.
+                    to use range as the Y axis, 'depth' for depth, and 'sample'
+                    for sample number. When None is specified, we'll look for range
+                    first and use that if available, then depth. If neither are
+                    available then sample number will be used.
+                        Default: None
             x_axis (str): Optional. Specify the X axis units to use. Set to 'ping_time'
-                          to use ping time as the X axis or 'ping_number' to use the
-                          ping number. Note that ping number is relative to the data
-                          being plotted (first ping is ping 1.) When None is specified,
-                          we'll look for  ping_time first and use that if available. If
-                          ping_time is not available, ping_number will be used.
+                    to use ping time as the X axis or 'ping_number' to use the ping number.
+                    Note that ping number is relative to the data being plotted (first
+                    ping is ping 1.) When None is specified, we'll look for ping_time
+                    first and use that if available. If ping_time is not available,
+                    ping_number will be used.
+                        Default: None
+            adjust_x (bool): Set to True to automatically adjust ping_times to align
+                    with imshow's regular grid. This is primarily for testing. You
+                    should keep this set to True.
+                        Default: True
 
         Raises:
             ValueError: a figure or subplot wasn't passed in.
@@ -135,6 +143,8 @@ class Echogram(object):
         self.frequency = frequency
         self.threshold = threshold
         self.imshow_x_axis = None
+        self.show_grid = show_grid
+        self.adjust_x = adjust_x
         
         #  store the grid, if provided
         if isinstance(grid, echolab2.processing.grid.grid):
@@ -312,12 +322,12 @@ class Echogram(object):
             An array, adj_x, of shifted data.
         """
 
-        if self.imshow_x_axis is not None and self.x_label_attribute == 'ping_time':
+        if self.imshow_x_axis is not None and self.x_label_attribute == 'ping_time' and self.adjust_x:
             xticks = np.interp(x_data.astype(np.float64),
                     self.data_object.ping_time.astype(np.float64), self.imshow_x_axis)
         else:
             # if the x axis is not ping time it must be ping number which
-            # doesn't require correction.
+            # doesn't require correction. (Or we're being told not to adjust.)
             xticks = x_data
 
         return xticks
@@ -470,36 +480,37 @@ class Echogram(object):
             aspect='auto', interpolation='none',  origin='upper',extent=self.extents)
 
         #  if there is a echolab grid object associated with this echogram render it
-        if self.grid:
-            if self.x_label_attribute == 'ping_time':
-                grid_xdata = np.append(self.grid.time_start,
-                        self.grid.time_end[-1]).astype(np.float64)
-            else:
-                grid_xdata = np.append(self.grid.ping_start,
-                        self.grid.ping_end[-1]).astype(np.float64)
-                
-            grid_xdata = self.adjust_xdata(grid_xdata)
-
-            if self.y_label_attribute == 'range':
-                grid_ydata = np.append(self.grid.range_start,
-                        self.grid.range_end[-1]).astype(np.float64)
-            elif self.y_label_attribute == 'depth':
-                grid_ydata = np.append(self.grid.range_start,
-                        self.grid.range_end[-1]).astype(np.float64)
-            else:
-                grid_ydata = np.append(self.grid.sample_start,
-                        self.grid.sample_end[-1]).astype(np.float64)
+        if self.show_grid:
+            if self.grid:
+                if self.x_label_attribute == 'ping_time':
+                    grid_xdata = np.append(self.grid.time_start,
+                            self.grid.time_end[-1]).astype(np.float64)
+                else:
+                    grid_xdata = np.append(self.grid.ping_start,
+                            self.grid.ping_end[-1]).astype(np.float64)
                     
-            #  set the grid axes locations
-            self.axes.set_xticks(grid_xdata)
-            self.axes.set_yticks(grid_ydata)
-            
-            #  set the grid properties based on the grid object attributes
-            self.axes.grid(True, color=self.grid.color, 
-                    linewidth=self.grid.linewidth, linestyle=self.grid.linestyle)
-        else:
-            # No grid. Apply the defaule grid.
-            self.axes.grid(True, color=[0,0,0])
+                grid_xdata = self.adjust_xdata(grid_xdata)
+
+                if self.y_label_attribute == 'range':
+                    grid_ydata = np.append(self.grid.range_start,
+                            self.grid.range_end[-1]).astype(np.float64)
+                elif self.y_label_attribute == 'depth':
+                    grid_ydata = np.append(self.grid.range_start,
+                            self.grid.range_end[-1]).astype(np.float64)
+                else:
+                    grid_ydata = np.append(self.grid.sample_start,
+                            self.grid.sample_end[-1]).astype(np.float64)
+                        
+                #  set the grid axes locations
+                self.axes.set_xticks(grid_xdata)
+                self.axes.set_yticks(grid_ydata)
+                
+                #  set the grid properties based on the grid object attributes
+                self.axes.grid(True, color=self.grid.color, 
+                        linewidth=self.grid.linewidth, linestyle=self.grid.linestyle)
+            else:
+                # No grid. Apply the defaule grid.
+                self.axes.grid(True, color=[0,0,0])
 
         if self.x_label_attribute == 'ping_time':
             # Set our custom x-axis formatter.

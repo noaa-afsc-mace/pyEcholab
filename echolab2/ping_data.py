@@ -1097,8 +1097,8 @@ class ping_data(object):
         Args:
             v_height (int, float, None): Specify the vertical height of the new samples in 
             the specified axis units. If depth or range are specified, the units are meters.
-            If sample is specified, the units are sample numbers. Set to None, the vertical
-            axis is not resampled.
+            If sample is specified, the units are sample numbers. If set to None, the
+            vertical axis is not resampled.
 
             h_length (int, float, timestamp64, None): Specify the horizontal extent of the 
             new samples in the specified axis units. If ping_number is specified, the units

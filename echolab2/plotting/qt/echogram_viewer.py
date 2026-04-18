@@ -1,8 +1,8 @@
 
 import os
 import functools
-from PyQt5 import QtCore, QtWidgets
-from PyQt5.QtCore import  pyqtSlot
+from PyQt6 import QtCore, QtWidgets
+from PyQt6.QtCore import  pyqtSlot
 from .ui import ui_echogram_viewer
 
 class echogram_viewer(QtWidgets.QMainWindow, ui_echogram_viewer.Ui_echogram_viewer):
@@ -101,9 +101,13 @@ class echogram_viewer(QtWidgets.QMainWindow, ui_echogram_viewer.Ui_echogram_view
         style, and width of the line is defined in the line object.
         '''
 
+        # Convert from matplotlib's 0.0-1.0 color values that are the default 
+        # for echolab objects to Qt 0-255 values
+        color = [int(x * 255) for x in line.color]
+
         #  add the cosmetic properties to the arguments.
-        kwargs = dict(kwargs, color=line.color, linestyle=line.linestyle,
-                thickness=line.thickness)
+        kwargs = dict(kwargs, color=color, linestyle=line.linestyle,
+                thickness=line.linewidth)
 
         line = self.QEchogramViewer.addLine([line.ping_time, line.data],
                 **kwargs)

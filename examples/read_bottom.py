@@ -8,6 +8,13 @@ then getting Sv and bottom data in displaying it in various ways.
 
 The EK80 class shares the same API for reading .bot files.
 
+Note: It is recommended that you use the echosounder class to read data since
+      it will automatically read bottom detection files in .xyz and .bot format
+      if they are located with the data. Currently the echosunder class does
+      not support reading .out files, though the EK60 class does support this
+      so if you need to read ES60 data with .out files, you will have to do
+      it the hard way.
+
 Definitions:
 
   The following attribute names are used in this example and they are
@@ -54,10 +61,10 @@ from echolab2.plotting.matplotlib import echogram
 
 
 # Create a list of .raw files.
-rawfiles = ['./data/EK60/DY1706_EK60-D20170625-T061707.raw']
+rawfiles = ['C:/EK Test Data/EK60/DY1603/raw/DY1603_EK60-D20160308-T111745.raw']
 
 # Also create a list of corresponding .bot files.
-botfiles = ['./data/EK60/DY1706_EK60-D20170625-T061707.bot']
+botfiles = ['C:/EK Test Data/EK60/DY1603/raw/DY1603_EK60-D20160308-T111745.bot']
 
 # Create an instance of EK60.
 ek60 = EK60.EK60()
@@ -190,7 +197,7 @@ else:
     # applied to the bottom detections so bottom_38_as_depth_w_heave
     # is depth without heave. Same for the 120 kHz.
     bottom_38_as_depth = bottom_38_as_depth_w_heave
-    bottom_38_as_depth = bottom_38_as_depth_w_heave
+    bottom_120_as_depth = bottom_120_as_depth_w_heave
 
 # Set the color of our DEPTH lines to green
 bottom_38_as_depth.color = [0, 1, 0]
