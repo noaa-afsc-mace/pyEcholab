@@ -32,7 +32,7 @@ import numpy as np
 #         18, 38, and 120 kHz and that bottom data will be available.
 #
 # NOTE! - This example currently only works with EK60 data where channels
-#         share the sample sample interval (and thus sample thickness) and
+#         share the same sample interval (and thus sample thickness) and
 #         ping number (meaning no dropped pings in a channel.) Resampling
 #         and match_pings methods exist to correct this, but they have not
 #         been worked to this example. It is on the "To Do" list.

@@ -17,24 +17,33 @@ from echolab2.plotting.matplotlib import echogram
 
 
 #  create a callback that prints a progress bar when reading
-def print_progress(filename, cumulative_pct, cumulative_bytes,
-                                callback_ref):
-    if (cumulative_pct % 5):
-        print('.', end='')
-        
-    if cumulative_pct >= 100:
-        print()
+def print_progress(filename, cumulative_pct, cumulative_bytes, callback_ref):
+    '''
+    read_write_callback is a simple example of using the progress_callback
+    functionality of the EK*0.read_raw and EK*0.write_raw methods to provide
+    feedback to the user while reading/writing .raw files.
+    '''
+    import sys
+
+    if cumulative_pct > 100:
+        return
+    if cumulative_pct == 0:
+        sys.stdout.write(filename)
+    if cumulative_pct % 4:
+        sys.stdout.write('.')
+    if cumulative_pct == 100:
+        sys.stdout.write('  done!\n')
 
 
 #  create a list of raw files to read
-raw_file =  ['C:/EK Test Data/EK80/DY2602/cwfm/DY2602-D20260310-T191652.raw',
-             'C:/EK Test Data/EK80/DY2602/cwfm/DY2602-D20260310-T192346.raw']
+raw_file =  ['./data/EK80/cwfm/DY2602/raw/DY2602-D20260310-T191652.raw',
+             './data/EK80/cwfm/DY2602/raw/DY2602-D20260310-T192346.raw']
 
 #  get a list of all available calibration files. The calibrations will be
 #  matched to the data when they are read. Calibrations for channels not in
 #  the data will be ignored.
-cal_files = (glob('C:/EK Test Data/EK80/DY2602/calibration/FM/*.xml') +
-        glob('C:/EK Test Data/EK80/DY2602/calibration/CW/*.xml'))
+cal_files = (glob('./data/EK80/cwfm/DY2602/calibration/fm/*.xml') +
+        glob('./data/EK80/cwfm/DY2602/calibration/cw/*.xml'))
 
 #  specify the channels to read. Set this to None or [] to read all channels
 #  in the data file. In the example below, we read in 4 38 kHz channels.
@@ -44,7 +53,7 @@ channel_ids=['WBT 978217-15 ES38-7_1','WBT 978217-15 ES38-7_2',
              'WBT 978217-15 ES38-7_3','WBT 978217-15 ES38-7_4']
 
 #  read the raw file(s)
-print('Reading raw files...', end='')
+print('Reading raw files...')
 if channel_ids:
     ek_data = echosounder.read(raw_file, channel_ids=channel_ids,
             progress_callback=print_progress)
@@ -75,7 +84,7 @@ Sv_noise_correct = echosounder.noise_correct(Sv, SNR_threshold=10)
 #  Samples that are above the exclude above or below the bottom offset are set
 #  to NaN.
 Sv_bottom_clean = echosounder.apply_boundary_exclusions(Sv_noise_correct,
-        exclude_above_line=5, bottom_offset=-0.5)
+        exclude_above_line=5, bottom_offset=-3.0)
 
 integrated_data = {}
 
@@ -86,7 +95,7 @@ for channel in Sv_bottom_clean.keys():
     
     # Initialize grid for integration - we'll create a grid with cells that are 50 pings by 5 m 
     int_grid = grid.grid(interval_length=50, interval_axis='ping_number',
-            layer_axis='range', layer_thickness=5,
+            layer_axis='range', layer_thickness=5, color=[0,0,0],
             data=Sv_bottom_clean[channel])
     
     #  integrate
@@ -102,7 +111,7 @@ for channel in Sv_bottom_clean.keys():
                     frequency=f, cmap='viridis', grid=int_grid)
             eg.plot_integration_results(integrated_data[channel])
             if hasattr(Sv[channel], 'bottom_line'):
-                eg.plot_line(Sv[channel].bottom_line, color=[0.9,0,0], linewidth=1.0)
+                eg.plot_line(Sv[channel].bottom_line, color=[0.9,0,0.9], linewidth=1.0)
             eg.add_colorbar(fig)
             eg.axes.set_title("Sv " + channel + " " + str(f) + " Hz")
     else:
@@ -113,7 +122,7 @@ for channel in Sv_bottom_clean.keys():
                 cmap='viridis', grid=int_grid)
         eg.plot_integration_results(integrated_data[channel])
         if hasattr(Sv[channel], 'bottom_line'):
-            eg.plot_line(Sv[channel].bottom_line, color=[0.9,0,0], linewidth=1.0)
+            eg.plot_line(Sv[channel].bottom_line, color=[0.9,0,0.9], linewidth=1.0)
         eg.add_colorbar(fig)
         eg.axes.set_title("Sv " + channel + " " + str(f) + " Hz")
 

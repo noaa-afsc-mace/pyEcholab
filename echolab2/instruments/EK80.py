@@ -199,7 +199,9 @@ class EK80(object):
         self.start_ping = None
         self.end_ping = None
 
-        # n_pings stores the total number of pings read.
+        # n_pings stores the total number of pings read. Depending on the
+        # system configuration and read parameters, this may or may not match
+        # the number of pings within each channel. 
         self.n_pings = 0
 
         # n_files stores the total number of raw files read.
@@ -255,6 +257,7 @@ class EK80(object):
         self._this_ping_time = np.datetime64('1000-02')
 
         #  initialize some internal attributes
+        self._file_n_pings = 0
         self._config = None
         self._filters = {}
         self._tx_params = {}
@@ -451,7 +454,7 @@ class EK80(object):
                  start_ping=None, end_ping=None, frequencies=None,
                  channel_ids=None, incremental=None, start_sample=None,
                  end_sample=None, progress_callback=None, nmea=True,
-                 callback_ref=None, time_array=None):
+                 callback_ref=None, read_times=None, read_pings=None):
         """Reads one or more Simrad EK80 .raw files and appends the data to any
         existing data. The data are ordered as read.
 
@@ -470,15 +473,22 @@ class EK80(object):
                 to start reading from the first ping in the file.
             end_time (datetime64): Specify an end time if you do not want to read
                 to the last ping in the file.
-            time_array (list/ndarray of datetime64): Specify specific ping times
+            read_times (list/ndarray of datetime64): Specify specific ping times
                 to read as an list or array of datetime64 objects. Ping times
                 that match a time in the array are stored. All other pings are
-                ignored. Note that because a time range is not specified, all
-                NMEA data will be read from the file. 
+                ignored. Note that because a time or ping range is not specified, 
+                all NMEA data will be read from the file. 
             start_ping (int): Specify starting ping number if you do not want
                 to start reading at first ping.
             end_ping (int): Specify end ping number if you do not want
                 to read all pings.
+            read_pings (list/ndarray of int): Specify specific ping numbers
+                to read as an list or array of ping numbers. Pings start at 1
+                and increment each time a raw datagram with a unique timestamp
+                is encountered. Ping numbers that match a number in the array
+                are stored. All other pings are ignored. Note that because a
+                time or ping range is not specified, all NMEA data will be read
+                from the file. 
             frequencies (list): List of floats (i.e. 18000.0) if you
                 only want to read specific frequencies.
             channel_ids (list): A list of strings that contain the unique
@@ -511,23 +521,30 @@ class EK80(object):
         if start_time:
             if not isinstance(start_time, np.datetime64):
                 raise TypeError("start_time must be an instance of numpy.datetime64")
-            self.read_start_time = start_time
+            self.read_start_time = start_time.astype('datetime64[ms]')
         if end_time:
             if not isinstance(end_time, np.datetime64):
                 raise TypeError("end_time must be an instance of numpy.datetime64")
-            self.read_end_time = end_time
-        if time_array is not None:
-            if len(time_array) > 0:
-                if not (isinstance(time_array, np.ndarray) or isinstance(time_array, list)):
-                    raise TypeError("time_array must be an instance of numpy.ndarray or list")
+            self.read_end_time = end_time.astype('datetime64[ms]')
+        if read_times is not None:
+            if len(read_times) > 0:
+                if not (isinstance(read_times, np.ndarray) or isinstance(read_times, list)):
+                    raise TypeError("read_times must be an instance of numpy.ndarray or list")
                 else:
-                    if not isinstance(time_array[0], np.datetime64):
-                        raise TypeError("time_array must be an list/array of numpy.datetime64")
-            self.read_time_array = start_time
+                    if not isinstance(read_times[0], np.datetime64):
+                        raise TypeError("read_times must be an list/array of numpy.datetime64")
+                self.read_time_array = []    
+                for t in read_times:
+                    self.read_time_array.append(t.astype('datetime64[ms]'))
         if start_ping:
             self.read_start_ping = start_ping
         if end_ping:
             self.read_end_ping = end_ping
+        if read_pings:
+            if not (isinstance(read_pings, np.ndarray) or isinstance(read_pings, list)):
+                    raise TypeError("read_pings must be an instance of numpy.ndarray or list")
+            else:
+                self.read_ping_array = read_pings
         if start_sample:
             self.read_start_sample = start_sample
         if end_sample:
@@ -612,7 +629,7 @@ class EK80(object):
                 self._config[channel]['file_path'] = current_filepath
                 self._config[channel]['file_bytes'] = total_bytes
                 self._config[channel]['start_time'] = _config['timestamp']
-                self._config[channel]['start_ping'] = self.n_pings
+                self._config[channel]['start_ping'] = self._file_n_pings
 
             #  set the cumulative_bytes var and start time
             cumulative_bytes = _config['bytes_read']
@@ -686,8 +703,8 @@ class EK80(object):
             while True:
                 new_datagram = fid.read(1)
 
-                # Convert the timestamp to a datetime64 object.
-                # Check for NULL datagram date/time which is returned as datetime.datetime(1601, 1, 1, 0, 0)
+                # Convert the timestamp to a datetime64 object. Check for NULL datagram date/time
+                # which is returned as datetime.datetime(1601, 1, 1, 0, 0)
                 if new_datagram['timestamp'].year < 1900:
                     # This datagram has NULL date/time values
                     new_datagram['timestamp'] = np.datetime64("NaT")
@@ -696,9 +713,11 @@ class EK80(object):
                     new_datagram['timestamp'] = \
                             np.datetime64(new_datagram['timestamp'], '[ms]')
 
-                idx_data[new_datagram['ping_number']] = {'distance':new_datagram['distance'],
-                        'latitude':new_datagram['latitude'], 'longitude':new_datagram['longitude'],
-                        'timestamp':new_datagram['timestamp'], 'file_offset':new_datagram['file_offset']}
+                # extract data from the IDX0 datagrams
+                if new_datagram['type'] == 'IDX0':
+                    idx_data[new_datagram['ping_number']] = {'distance':new_datagram['distance'],
+                            'latitude':new_datagram['latitude'], 'longitude':new_datagram['longitude'],
+                            'timestamp':new_datagram['timestamp'], 'file_offset':new_datagram['file_offset']}
         except SimradEOF:
             #  we're at the end of the file
             pass
@@ -806,11 +825,16 @@ class EK80(object):
                 and Mk1 EK60 .bot files that contain a copy of NMEA which is
                 also recorded in the .raw file.
         """
+
+        # create a variable to track if this datagram is part of a new ping
+        # enseble or something else.
+        new_ping = False
+
         #  create the return dict that provides feedback on progress
         result = {'bytes_read':0, 'timestamp':None, 'type':None, 'finished':False}
 
-        #  peek at the next datagram to get some basic info. We'll determine if we
-        #  should read or skip this datagram below
+        # read the header of the next datagram to get some basic info. We'll determine
+        # if we should read or skip this datagram below
         try:
             #  get the next datagram's header
             dgram_header = fid.get_header()
@@ -864,14 +888,28 @@ class EK80(object):
                         #  this ping is not in it, move along.
                         fid.skip(header=dgram_header)
                         return result
-                
+
+                # This is a raw, aka, sample datagram. Check if this is a new "ping"
+                # or just a different channel in the same ping.
                 if self._this_ping_time != dgram_header['timestamp']:
-                    self.n_pings += 1
+                    # This is a new ping. Increment the file ping counter and
+                    # set new_ping so if we end up reading this ping we can
+                    # increment the n_pings attribute.
+                    self._file_n_pings += 1
+                    new_ping = True
                     self._this_ping_time = dgram_header['timestamp']
+
+            # Same for ping array
+            if self.read_ping_array is not None:
+                if self._file_n_pings not in self.read_ping_array:
+                    #  an array of ping numbers to read has been provided and
+                    #  this ping is not in it, move along.
+                    fid.skip(header=dgram_header)
+                    return result
 
             #  after updating ping count, check if we're past the end ping
             if self.read_end_ping is not None:
-                if self.n_pings > self.read_end_ping:
+                if self._file_n_pings > self.read_end_ping:
                     #  we have a end ping and this data comes after it
                     #  so we are actually done reading - set the finished
                     #  field in our return dict and return
@@ -880,7 +918,7 @@ class EK80(object):
 
             # Check if we should store this data based on ping bounds.
             if self.read_start_ping is not None:
-                if self.n_pings < self.read_start_ping:
+                if self._file_n_pings < self.read_start_ping:
                     #  we have a start ping and this data comes before it
                     #  so we skip the rest of the datagram and return
                     fid.skip(header=dgram_header)
@@ -902,9 +940,16 @@ class EK80(object):
             else:
                 self.end_time = dgram_header['timestamp']
 
-        # If we're here, we're reading the datagram. Calling read while passing the header will
-        # result in re-parsing the header values so replace the timestamp with the previously
-        # parsed and converted value.
+        # If we're here, we're reading the datagram. First, check if we need
+        # to increment our read pings counter (n_pings).
+        if new_ping:
+            # Yes, this is a new ping, and since we're here, we're reading it,
+            # so increment the read pings counter.
+            self.n_pings += 1
+
+        # Now finish reading the datagram. Calling read while passing the header will
+        # result in re-parsing the header values so replace the timestamp with the 
+        # previously parsed and converted value.
         try:
             #  pass the datagram header and read the rest of the datagram
             new_datagram = fid.read(1, header=dgram_header)
@@ -916,7 +961,7 @@ class EK80(object):
             return result
 
         # Process and store the datagrams by type.
-        #(new_datagram['type'])
+        #print(new_datagram['type'])
 
         # Process all XML parameter datagrams
         if new_datagram['type'].startswith('XML'):
@@ -1025,9 +1070,9 @@ class EK80(object):
                     self.start_time = new_datagram['timestamp']
                 # Set the first ping number we read.
                 if not self.start_ping:
-                    self.start_ping = self.n_pings
+                    self.start_ping = self._file_n_pings
                 # Update the last ping number.
-                self.end_ping = self.n_pings
+                self.end_ping = self._file_n_pings
 
                 if new_datagram['type'][3] in ['0', '3']:
 
@@ -1544,12 +1589,12 @@ class EK80(object):
 
         # Process the args
         if start_time:
-            start_time = start_time
+            start_time = start_time.astype('datetime64[ms]')
         else:
             start_time = self.start_time
 
         if end_time:
-            end_time = end_time
+            end_time = end_time.astype('datetime64[ms]')
         else:
             end_time = self.end_time
 
@@ -2196,10 +2241,7 @@ class EK80(object):
                     msg = msg + ("        " + channel_id + " :: " + raw.data_type + " " + str(raw.shape) + "\n")
             msg = msg + ("    data start time: " + str(self.start_time) + "\n")
             msg = msg + ("      data end time: " + str(self.end_time) + "\n")
-            #  TODO: this returns sum of pings in all raw objects when it should return
-            #        total number of unique pings
-            msg = msg + ("    number of pings: " + str(self.end_ping -
-                                                       self.start_ping + 1) + "\n")
+            msg = msg + ("    number of pings: " + str(self.n_pings) + "\n")
 
         else:
             msg = msg + ("  EK80 object contains no data\n")

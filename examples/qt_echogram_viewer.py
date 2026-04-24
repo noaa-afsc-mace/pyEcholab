@@ -17,20 +17,26 @@ zoom using the keyboard and mouse. The controls are:
     <CTRL> + Mouse Wheel zooms in/out
     <ALT> + Click and drag will pan
 
+The QImageViewer library was riginally written to annotate images and
+has a bunch of classes that facilitate drawing and placing text/marks
+on image layers. The QEchogramViewer class allows you to do this using
+units of range/depth and time.
 """
 
-import sys
+
 from PyQt6 import QtWidgets
 from echolab2.instruments import EK60
 from echolab2.plotting.qt import echogram_viewer
-from echolab2.processing import afsc_bot_detector
 
 
 def read_write_callback(filename, cumulative_pct, cumulative_bytes, userref):
     '''
     read_write_callback is a simple example of using the progress_callback
-    functionality of the EK60.read_raw and EK60.write_raw methods.
+    functionality of the EK*0.read_raw and EK*0.write_raw methods to provide
+    feedback to the user while reading/writing .raw files.
     '''
+    import sys
+    
     if cumulative_pct > 100:
         return
     if cumulative_pct == 0:
@@ -131,7 +137,10 @@ eg_viewer.update_echogram(Sv_38)
 # what was used when the data were recorded. This is the desired and
 # expected result since we passed our calibration object with the
 # modified values to the raw_data.get_bottom() method.
-eg_viewer.add_line(bottom_line)
+#
+# We set the movable keywords to False so you can't drag the
+# bottom line around.
+eg_viewer.add_line(bottom_line, selectable=True, movable=False)
 
 #  save the echogram at full resolution. Curently this does not
 #  include the horizontal scaling that is appled to the sample data

@@ -17,7 +17,7 @@ from echolab2.instruments import EK80
 ping_number = 24
 
 # Define the path to the data file.
-raw_filename = 'C:/EK Test Data/EK80/DY2104/cw/DY2104-D20210602-T102103.raw'
+raw_filename = './data/EK80/cw/DY2104/raw/DY2104-D20210602-T102103.raw'
 
 # Create an instance of our EK80 object. The EK80 object will contain
 # all of the data elements read from the raw data files. This includes

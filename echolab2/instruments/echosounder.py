@@ -58,10 +58,11 @@ $Id$
 import os
 import copy
 import warnings
+import numpy as np
 from . import EK80
 from . import EK60
+from .util.simrad_raw_file import RawSimradFile, SimradEOF
 from .util import simrad_utils
-import numpy as np
 from ..processing import mask, noise, line
 
 
@@ -1114,6 +1115,237 @@ def _get_processed_data(data_object, data_type, fm_frequency_domain=True, calibr
             data[chan] = p_data
 
     return data
+
+
+def get_rawfile_info(files):
+    '''get_rawfile_info tries to efficiently extract some basic information about raw
+    files. This function first looks for an .idx file to extract start/end ping and time
+    information and then reads the header only of the raw file. This is pretty quick.
+    If an .idx file is not available, it will fall back to using the EK*0 classes to
+    read the .raw file. This will be slower since while little data will be stored, the
+    entire file will still have to be read.
+
+        files (str/list of str): provide a string defining the full path to the raw file
+            to read, or a list of strings of files to read. If a single string is passed
+            a dictionary containing the results will be returned. If a list of strings
+            is passed, a list of dicts will be returned.
+
+    For each file specified, the following dictionary is returned:
+
+        raw_file_name - the name of the raw file
+        idx_file_name - the name of the idx file (None if no idx file exists)
+        raw_file_bytes - the size of the raw file in bytes
+        start_time - the time of the first ping as datetime64
+        end_time - the time of the last ping as datetime64
+        start_ping - the starting ping in the file - If an .idx file is available,
+            the ping numbers are based on the collection software's global ping counter.
+            If the .idx file is not available, the ping numbers are relative to the
+            data file and start at 1.
+        end_ping - the last ping in the file - If an .idx file is available,
+            the ping numbers are based on the collection software's global ping counter.
+            If the .idx file is not available, the ping numbers are relative to the
+            data file.
+        n_pings - the total number of pings in the file
+        channels - a list containing the channel IDs that are in the file
+        initial_parameters - a dict, keyed by channel ID, that contains some
+            of the channel's configuration parameters recorded when the raw
+            file was created. The initial_parameter keys are:
+                channel_mode
+                pulse_form
+                frequency
+                pulse_duration
+                sample_interval
+                transmit_power
+                slope
+                sound_velocity
+
+    '''
+
+    if not isinstance(files, list):
+        # We have been passed a single file as string - wrap in a list
+        files = [files]
+        # When passed a single file, we will return a single dict
+        file_info = None
+    else:
+
+        #  since we have been passed a list of files, we return a list of dicts with results
+        file_info = []
+
+    # Work through the list of input files
+    for file in files:
+
+        #  normalize the input file path
+        filename = os.path.normpath(file)
+
+        #  start building the return dict
+        this_info = {}
+        this_info['raw_file_name'] = filename
+
+        # first check if we have an .idx file - this is by far the fastest way
+        # to get some basic info about a raw file
+        file_root, _ = os.path.splitext(filename)
+        idx_file = file_root + '.idx'
+        if os.path.isfile(idx_file):
+            has_idx = True
+            this_info['idx_file_name'] = idx_file
+        else:
+            has_idx = False
+            this_info['idx_file_name'] = None
+
+        # Determine what kind of data file we have
+        try:
+            data_type = _check_filetype(filename)
+        except:
+            raise FileNotFoundError("Unable to open file: " + filename)
+
+        # Get the raw file size in bytes
+        this_info['raw_file_bytes'] = os.path.getsize(filename)
+
+        #  create a data object based on file type
+        if data_type == SIMRAD_EK60:
+            # This is an EK60 file
+            data_object = EK60.EK60()
+            this_info['file_format'] = 'EK60'
+        elif data_type == SIMRAD_EK80:
+            # This is an EK80 file
+            data_object = EK80.EK80()
+            this_info['file_format'] = 'EK80'
+        else:
+            # We don't know what this is
+            raise UnknownFormatError("Unknown file type encountered: " + filename)
+
+        # Get info on this file - if an idx file is available, we use that
+        if has_idx:
+            #  read the idx file to get the time and ping span
+            idx_data = data_object.read_idx(idx_file)
+            pings = list(idx_data.keys())
+            this_info['start_time'] = idx_data[pings[0]]['timestamp']
+            this_info['end_time'] = idx_data[pings[-1]]['timestamp']
+            this_info['start_ping'] = pings[0]
+            this_info['end_ping'] = pings[-1]
+            this_info['n_pings'] = pings[-1] - pings[0]
+
+            # next, read the rawfile header to extract info about the channels
+            try:
+                fid = RawSimradFile(filename, 'r')
+            except:
+                raise IOError('Unable to open raw file ' + filename + ' for reading.')
+
+            # read the config header
+            header = fid.read(1)
+            
+            if data_type == SIMRAD_EK80:
+                # The newer raw format of the EK80 and related systems has the "initialparameter"
+                # datagram that provides info about some of the initial channel settings and
+                # we'll read and parse that to return to the user.
+
+                # Read the initialparameters datagram to get channel info
+                initial_param = fid.read(1)
+                #  make sure this is an initial parameter datagram
+                if initial_param['subtype'] == 'initialparameter':
+                    # it is, extract some info about the channels 
+                    this_info['channels'] = list(initial_param['initialparameter'].keys())
+                    this_info['initial_parameters']= dict.fromkeys(initial_param['initialparameter'])
+                    for chan in initial_param['initialparameter']:
+                        # convert pulse form and channel mode into human readable values
+                        if initial_param['initialparameter'][chan]['pulse_form'] == 1:
+                            initial_param['initialparameter'][chan]['pulse_form'] = 'FM'
+                        else:
+                            initial_param['initialparameter'][chan]['pulse_form'] = 'CW'
+                        if initial_param['initialparameter'][chan]['channel_mode'] == 1:
+                            initial_param['initialparameter'][chan]['channel_mode'] = 'passive'
+                        else:
+                            initial_param['initialparameter'][chan]['channel_mode'] = 'active'
+
+                        # now assign this dict to our return dict
+                        this_info['initial_parameters'][chan] = initial_param['initialparameter'][chan]
+            else:
+                # The older EK60 raw format does not have the initialparameter datagram
+                # so we will use the header and fish thru the first RAW0 datagrams and grab
+                # similar info as is contained in the initialparameter datagram
+
+                # build our return dict
+                this_info['channels'] = list(header['configuration'].keys())
+                this_info['initial_parameters']= dict.fromkeys(header['configuration'], {})
+
+                # channels are mapped by numbers in RAW0 datagrams so build a nummber to ID map.
+                # We will also take what we can from the header
+                chan_num_map = {}
+                for chan_num, chan in enumerate(header['configuration'], start=1):
+                    chan_num_map[chan_num] = chan
+                    this_info['initial_parameters'][chan]['pulse_form'] = 'CW'
+                    this_info['initial_parameters'][chan]['slope'] = None
+                    this_info['initial_parameters'][chan]['frequency'] = header['configuration'][chan]['frequency']
+                    this_info['initial_parameters'][chan]['channel_id'] = chan
+
+                # Now read ahead looking for the first RAW0 datagram for each channel to
+                # extract the remaining params from the RAW dataagrams.
+                read_all_chans = [False] * len(this_info['channels'])
+                while not np.all(read_all_chans):
+                    dgram = fid.read(1)
+                    if dgram['type'] == 'RAW0':
+                        # channels are mapped by number in RAM0 datagrams so map that back to our channel ID
+                        chan = chan_num_map[dgram['channel']]
+                        # populate the rest of the initial_parameters for this channel
+                        if dgram['transmit_mode'] == 1:
+                            this_info['initial_parameters'][chan]['channel_mode'] = 'passive'
+                        else:
+                            this_info['initial_parameters'][chan]['channel_mode'] = 'active'
+                        this_info['initial_parameters'][chan]['pulse_duration'] = dgram['pulse_length']
+                        this_info['initial_parameters'][chan]['sample_interval'] = dgram['sample_interval']
+                        this_info['initial_parameters'][chan]['transmit_power'] = dgram['transmit_power']
+                        this_info['initial_parameters'][chan]['sound_velocity'] = dgram['sound_velocity']
+
+                        # indicate that we have read the RAW datagram for this channel
+                        read_all_chans[dgram['channel'] - 1] = True
+
+            #  close the idx file
+            fid.close()
+
+        else:
+            # There isn't an .idx file so we're going to do this the hard way. Read
+            # the entire raw file, but don't store any data
+            data_object.append_raw(filename, power=False, angles=False, complex=False,
+                    nmea=False)
+            this_info['start_time'] = data_object.start_time
+            this_info['end_time'] = data_object.end_time
+            this_info['start_ping'] = data_object.start_ping
+            this_info['end_ping'] = data_object.end_ping
+            this_info['n_pings'] = data_object.n_pings
+
+            # build our return dict
+            this_info['channels'] = data_object.channel_ids
+            this_info['initial_parameters']= dict.fromkeys(data_object.channel_ids, {})
+
+            # loop thru the channels and extract the initial params from the first pings
+            for chan in data_object.channel_ids:
+                # a bit lazy here, but wrap this in a try block to handle cases where files
+                # are empty or other weird cases
+                try:
+                    chan_data = data_object.raw_data[chan][0]
+
+                    if chan_data.transmit_mode[0] == 1:
+                        this_info['initial_parameters'][chan]['channel_mode'] = 'passive'
+                    else:
+                        this_info['initial_parameters'][chan]['channel_mode'] = 'active'
+                    this_info['initial_parameters'][chan]['pulse_duration'] = chan_data.pulse_length[0]
+                    this_info['initial_parameters'][chan]['sample_interval'] = chan_data.sample_interval[0]
+                    this_info['initial_parameters'][chan]['transmit_power'] = chan_data.transmit_power[0]
+                    this_info['initial_parameters'][chan]['sound_velocity'] = chan_data.sound_speed[0]
+                except:
+                    # must not have data for this channel? just move on
+                    pass
+
+        # if file_info is None, we're returning a single dict. If it is a list, we're
+        # checking multiple files and returning a list of dicts
+        if file_info:
+            # it's a list - append this file's info and move on
+            file_info.append(this_info)
+        else:
+            # it's not a list so we're only working with a single file
+            file_info = this_info
+
+    return file_info
 
 
 def get_data_by_frequency(p_data_dict, frequency):

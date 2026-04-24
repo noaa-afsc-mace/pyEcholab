@@ -1,13 +1,20 @@
 # -*- coding: utf-8 -*-
-"""A simple ek60 reader test.
+"""An example demonstraing the direct use of the EK60 class to read two
+different data files and plot an echogram. This example is intentionally
+obtuse and is in part intended to test pyEcholab's handling of these
+different data files but it also provides a closer look at the inner
+workings of the library which some may find useful.
 
-This script demonstrates simple file reading and plotting of ek60 data.  In
-general, the script reads files passed to it, stores data in a data object,
-parses information from the data, and generates plots.  Specifically,
-this script demonstrates processes such as retrieving values from the data (
-power, Sv, and angles from specified channels/frequencies), appending and
-inserting data from different sample intervals, and using matplotlib to
-plot echograms.
+The recommended method for reading .raw data is using the echosounder
+module. It handles most of the details of reading and transforming raw data,
+simplifying the process. But, the main restriction when using the echosounder
+module is that when reading multiple files at the same time, all files must
+contain the same data type collected from the same transceivers. In this
+example we are purposfully reading two files where the pulse lengths and
+transceiver installation order are different (and thus the corresponding
+channel IDs are different) so using the echosounder module is not an
+option.
+
 """
 
 from matplotlib.pyplot import figure, show, subplots_adjust, get_cmap
@@ -16,18 +23,14 @@ from echolab2.plotting.matplotlib import echogram
 
 
 # Create the list of input files.  For this test we purposely picked two files
-# with the same channels, but with different pulse lengths and a different
-# installation order.
+# with the same hardware, but with different pulse lengths and a different
+# transceiver installation order.
 
-# The descriptions below apply to reading these 2 files in the following order.
-rawfiles = ['./data/EK60/DY1201_EK60-D20120214-T231011.raw',
-            './data/EK60/DY1706_EK60-D20170609-T005736.raw']
+# The text in the comments below apply to reading these 2 files in the
+# following order.
+rawfiles = ['./data/EK60/DY1201/raw/DY1201_EK60-D20120214-T231011.raw',
+            './data/EK60/DY1706/raw/DY1706_EK60-D20170609-T005736.raw']
 
-# Create a matplotlib figure to plot our echograms on.
-fig = figure()
-# Set some properties for the sub plot layout.
-subplots_adjust(left=0.11, bottom=0.1, right=0.98, top=.93, wspace=None,
-                hspace=0.9)
 
 # Create an instance of the EK60 instrument. This is the top level object used
 # to interact with EK60 and  data sources.
@@ -55,7 +58,7 @@ print(ek60)
 # believe that they are always sorted by frequency from low to high and the
 # reader encounters them in this order so channel 1 should always be the lowest
 # frequency in the file. How channels are ordered if you have multiple GPTs
-# operating at the same frequency or if you're using ER60 multiplexing is unknown.
+# operating at the same frequency or if you're using multiplexing is unknown.
 #
 # Channel ID is the unique string that the ER60/EK80 software assigns the
 # channel. This usually includes a hardware ID (MAC address) and the
@@ -63,19 +66,19 @@ print(ek60)
 # order and MUX channel between these but I am not sure about EK80.
 #
 # Data type describes the kind of data stored in the raw_data object associated
-# with this channel. Raw files can contain power only, angle only, power AND angle,
-# and EK80 files can contain complex data. Following this, raw_data objects can contain
-# power, angle, power AND angle, or complex data. If a new data type is encountered
-# while reading data from a specific channel ID, a new raw_data object is created for
-# that data. In our case, all of the channels contain power and angle data. But if
-# you read a file that contained only angle data, then a file with the same channels
-# that had power/angle data, each channel would contain two raw_data objects, one
-# containing the angle only data and one containing the power and angle data.
+# with this channel. EK60 files can contain power only, angle only, or power and angle
+# data and EK80 files contain these types as well as complex data. Following this,
+# raw_data objects can contain power, angle, power and angle, or complex data. If a
+# new data type is encountered while reading data from a specific channel ID, a
+# new raw_data object is created for that data. In our example here, all of the
+# channels contain power and angle data. But if you read a file that contained
+# only angle data, then a file with the same channels that had power/angle data,
+# each channel would contain two raw_data objects, one containing the angle only
+# data and one containing the power and angle data.
 
 # The size of the data array(s) is printed next in the form (n pings, n samples)
 
-
-# EK60 objects contain all the data stored in a .raw file organized in a number
+# EK*0 objects contain all the data stored in a .raw file organized in a number
 # of attributes. The bulk of the data are stored in raw_data objects and getting
 # a reference to these raw_data objects is one of the first things you'll usually
 # do when processing .raw data. You can access the EK60.raw_data attribute directly
@@ -95,7 +98,7 @@ raw_data_38 = ek60.get_channel_data(frequencies=38000)
 # is returned or you'll know nothing and need to iterate through the dict keys and
 # lists they reference and process each raw_data object as needed. Here we know that
 # the dict will have a single key (38000) and that list will be 2 elements long.
-# Because we know this we can unpack "manually"
+# Because we know this we can unpack manually
 
 # get a reference to the first raw_data object at 38 kHz
 raw_data_38_1 = raw_data_38[38000][0]
@@ -114,11 +117,14 @@ raw_data_38_2 = raw_data_38[38000][1]
 # length / 4). The data were recorded in 2012.
 print(raw_data_38_1)
 
-# The sample data from the first 38 kHz channel is contained in a 763x1059 array
+# The sample data from the second 38 kHz channel is contained in a 763x1059 array
 # recoded with a 512us pulse length resulting in a sample interval of 128us.
 # These data were recorded in 2017.
 print(raw_data_38_2)
 
+
+# Next, artificially manipulate the data. This doesn't necessarily make sense,
+# but it exercises methods within the data classes.
 
 # Append the 2nd object's data to the first and print out the results. We use the
 # append method, passing the raw_data_38_2 reference. Note that data in raw_data
@@ -141,14 +147,22 @@ raw_data_38_1.insert(raw_data_38_2, ping_number=50, insert_after=True)
 # Now raw_data_38_1 contains 1662 pings. Pings 1-50 are from the 2012 data.
 # Pings 51-813 are the 763 pings from the 2012 data. Pings 814-899 are the
 # rest of the 2012 data and pings 900-1663 are a second copy of the 2017 data.
-# This example isn't practical in any way, I am just illustrating
 print(raw_data_38_1)
 
-# Create an axis.
+
+# Create a matplotlib figure to plot our echograms on.
+fig = figure()
+# Set some properties for the sub plot layout.
+subplots_adjust(left=0.11, bottom=0.1, right=0.98, top=.93, wspace=None,
+                hspace=0.9)
+
+# Create a subplot axis.
 ax_1 = fig.add_subplot(3, 1, 1)
+
 # Create an echogram to plot up the raw sample data.
 echogram_2 = echogram.Echogram(ax_1, raw_data_38_1, 'power')
 ax_1.set_title("Power as stored in raw_data object")
+
 
 # You will notice that the 2017 data has more samples so there will be empty
 # samples padding the 2012 data. Also notice that the data is not in time order
@@ -246,5 +260,4 @@ ax_2.set_title("angles_athwartship data in time order")
 # Show our figure.
 show()
 
-
-pass
+print()

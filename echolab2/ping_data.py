@@ -297,32 +297,13 @@ class ping_data(object):
                     'type as this object. This data type: ' + self.data_type +
                     ' object to insert data type: ' + obj_to_insert.data_type)
 
-        # Make sure that the frequencies match. We allow NaNs because we allow
-        # empty data to be inserted.
+        # Make sure that the frequencies match.
         if not force:
-            freq_match = False
-            # check if we have a a frequency axis
-            if isinstance(self.frequency, np.ndarray):
-                # Yes, check if they are the same
-                if np.isnan(obj_to_insert.frequency[0]):
-                    freq_match = True
-                else:
-                    freq_match = np.array_equal(self.frequency,
-                        obj_to_insert.frequency)
-            else:
-                # I'm not sure how we would get here, but if we are we're way off
-                # the beaten path so we'll just go with it.
-                freq_match = True
-
+            freq_match = self._check_frequencies(obj_to_insert)
             if not freq_match:
-                if self.frequency.shape[0] == 1:
-                    f = 'frequency'
-                else:
-                    f = 'frequencies'
-                raise TypeError('The ' + f + ' of the object you are inserting' +
-                                '/appending does not match the ' + f + ' of this ' +
-                                'object. Frequencies must match to append or ' +
-                                'insert.')
+                raise ValueError('The object that you are inserting does not have the ' +
+                        'same frequency attributes as this object. You cannot insert '+
+                        'data with different frequency attributes.')
 
         # Get information about the shape of the data we're working with.
         my_pings = self.n_pings
@@ -522,19 +503,28 @@ class ping_data(object):
             self.n_pings = new_n_pings
 
 
-    def append(self, obj_to_append, force=False):
+    def append(self, obj_to_append, force=False, time_order=False):
         """Appends another echolab2 data object to this one.
 
         The objects must be instances of the same class and share the same
         frequency to append one to the other.
+
+        Args:
+            time_order (bool): Set to True to force the result of the append
+                to be ordered by time. Append implies adding data to the end
+                of your data array, but depending on the times within the
+                data you are appending, setting time_order=True can result
+                in data being inserted throughout "this" object.
         """
 
         # Simply inserts a data object at the end of our internal array.
-        self.insert(obj_to_append, ping_number=self.n_pings, force=force)
+        self.insert(obj_to_append, ping_number=self.n_pings, force=force,
+                    time_order=time_order)
 
 
     def insert(self, obj_to_insert, ping_number=None, ping_time=None,
-               insert_after=True, index_array=None, force=False):
+               insert_after=True, index_array=None, force=False,
+               time_order=False):
         """Inserts data from the provided echolab2 data object into
         this object.
 
@@ -557,6 +547,9 @@ class ping_data(object):
                 insert_after keywords are ignored.
             force (bool): Set to true to disable all checks and force the
                 insert even if the frequency, channel ID, etc are different.
+            time_order (bool): Set to True to force the result of the append
+                to be ordered by time.
+                    Default: False
 
         Raises:
             ValueError: Insertion point not specified.
@@ -567,6 +560,12 @@ class ping_data(object):
             IndexError: The length of the index array does not match the
                 number of pings in the object to be inserted.
         """
+
+        # if time_order is specified, it will override ping_number and ping_time
+        # keywords. Set ping_number to n_pings to add data to the end of the arrays
+        # before reordering by time.
+        if time_order:
+            ping_number = self.n_pings
 
         # Check that we have been given an insertion point or index array.
         if ping_number is None and ping_time is None and index_array is None:
@@ -579,31 +578,13 @@ class ping_data(object):
             raise TypeError('The object you are inserting/appending must ' +
                             'be an instance of ' + str(self.__class__))
 
-        # Make sure that the frequencies match. We allow NaNs because we allow
-        # empty data to be inserted.
+        # Make sure that the frequencies match.
         if not force:
-            freq_match = False
-            # check if we have a a frequency axis
-            if isinstance(self.frequency, np.ndarray):
-                # Yes, check if they are the same
-                if np.isnan(obj_to_insert.frequency[0]):
-                    freq_match = True
-                else:
-                    freq_match = np.array_equal(self.frequency,
-                        obj_to_insert.frequency)
-            else:
-                # I'm not sure how we would get here, but if we are we're way off
-                # the beaten path so we'll just go with it.
-                freq_match = True
-
+            freq_match = self._check_frequencies(obj_to_insert)
             if not freq_match:
-                if self.frequency.shape[0] == 1:
-                    f = 'frequency'
-                else:
-                    f = 'frequencies'
-                raise TypeError('The ' + f + ' of the object you are inserting' +
-                        '/appending does not match the ' + f + ' of this ' +
-                        'object. Frequencies must match to append or insert.')
+                raise ValueError('The object that you are inserting does not have the ' +
+                        'same frequency attributes as this object. You cannot insert '+
+                        'data with different frequency attributes.')
 
         # Get some info about the shape of the data we're working with.
         my_pings = self.n_pings
@@ -679,9 +660,23 @@ class ping_data(object):
         my_pings = my_pings + new_pings
         self.resize(my_pings, my_samples)
 
-        # Work through our data properties, inserting the data from
-        # obj_to_insert.
+        # Generate the move index.
+        move_idx = np.arange(move_index.shape[0])
+
+        # Update ping time first, in case we're returning in time order
+        self.ping_time[move_index[::-1],] = self.ping_time[move_idx[::-1]]
+        # Insert the new data.
+        self.ping_time[insert_index] = obj_to_insert.ping_time[:]
+        if time_order:
+            to_index = self.ping_time.argsort(kind='stable')
+            self.ping_time[:] = self.ping_time[to_index]
+
+        # Work through our data properties, inserting the data from obj_to_insert.
         for attribute in self._data_attributes:
+
+            #  skip ping time since we've handled that
+            if attribute == 'ping_time':
+                continue
 
             # Check if we have data for this attribute.
             if not hasattr(self, attribute):
@@ -690,9 +685,6 @@ class ping_data(object):
 
             # Get a reference to our data_obj's attribute.
             data = getattr(self, attribute)
-
-            # Generate the move index.
-            move_idx = np.arange(move_index.shape[0])
 
             # Check if the obj_to_insert shares this attribute.
             if hasattr(obj_to_insert, attribute):
@@ -712,17 +704,23 @@ class ping_data(object):
                     data[move_index[::-1],] = data[move_idx[::-1]]
                     # Insert the new data.
                     data[insert_index] = data_to_insert[:]
+                    if time_order:
+                        data[:] = data[to_index]
                 elif data.ndim == 2:
                     # Move the existing data from right to left to avoid
                     # overwriting data yet to be moved.
                     data[move_index[::-1], :] = data[move_idx[::-1], :]
                     # Insert the new data.
                     data[insert_index, :] = data_to_insert[:, :]
+                    if time_order:
+                        data[:,:] = data[to_index,:]
                 elif data.ndim == 3:
                     # Move 3d data
                     data[move_index[::-1], :, :] = data[move_idx[::-1], :, :]
                     # Insert the new data.
                     data[insert_index, :, :] = data_to_insert[:, :, :]
+                    if time_order:
+                        data[:,:,:] = data[to_index,:,:]
             else:
                 raise TypeError('The object you are inserting/appending does not have ' +
                         'the ' + attribute + ' attribute. Objects that you insert or ' +
@@ -1018,12 +1016,6 @@ class ping_data(object):
         # Set the new shape attributes
         self.n_samples = new_sample_dim
         self.shape = self._shape()
-
-        # We cannot update the n_pings attribute here since raw_data uses
-        # this attribute to store the number of pings read, *not* the total
-        # number of pings in the array as the processed_data class uses it.
-        # Instead, we have to set it either in the child class, or when context
-        # permits, in other methods of this class.
 
 
     def get_indices(self, start_ping=None, end_ping=None, start_time=None,
@@ -1592,6 +1584,120 @@ class ping_data(object):
                     resamp_data[i,j] = np.nan
 
         return resamp_data
+
+
+    def _check_frequencies(self, other_obj):
+        '''_check_frequencies compares the frequency attributes of this object against
+        the other_obj to see if they match. We require frequencies to match when performing
+        certain operations like insert/append.
+
+        Since the ping_data class is inherited by both the raw_data and processed_data
+        classes, we have to handle checking both child clases. 
+
+        raw_data objects for reduced or complex-CW store frequency by ping as a vector
+            n-pings long and complex-FM objects store frequency as frequency_start and
+            frequency_end vectors n-pings long.
+        processed_data objects store frequency as a single value for non Sv(f) and
+            as a vector n-frequencies long for Sv(f)/TS(f)
+
+        
+        '''
+        # First, check if either object is complex-FM. raw_data objects containing
+        # FM data will not have the frequency attribute as they have frequency_start
+        # and frequency_end attributes instead.
+        other_is_raw_fm = not hasattr(other_obj, 'frequency')
+        self_is_raw_fm = not hasattr(self, 'frequency')
+
+        # Next, regardless of the type, make sure they are the same
+        if other_is_raw_fm != self_is_raw_fm:
+            # they are not
+            return False
+
+        if other_is_raw_fm:
+            # The frequency_start and frequency_end attributes of raw_data objects 
+            # containing FM data will always be arrays. First check the frequency_start
+                other_obj_freq = other_obj.frequency_start[~np.isnan(other_obj.frequency_start)]
+
+                # If there is at least 1 frequency that isn't NaN, we check it
+                if other_obj_freq.shape[0] > 0:
+
+                    # check that the first element of other matches all in self, and that 
+                    # the first element in other matches all in other. If both are true, then
+                    # our frequencies match.
+                    other_matches_self = np.all(self.frequency_start[~np.isnan(self.frequency_start)] == other_obj_freq[0])
+                    other_matches_other = np.all(other_obj_freq == other_obj_freq[0])
+
+                    if not (other_matches_self and other_matches_other):
+                        # The frequency starts do not match
+                        return False
+                    
+                # Now check the frequency end
+                other_obj_freq = other_obj.frequency_end[~np.isnan(other_obj.frequency_end)]
+
+                # If there is at least 1 frequency that isn't NaN, we check it
+                if other_obj_freq.shape[0] > 0:
+
+                    # check that the first element of other matches all in self, and that 
+                    # the first element in other matches all in other. If both are true, then
+                    # our frequencies match.
+                    other_matches_self = np.all(self.frequency_end[~np.isnan(self.frequency_end)] == other_obj_freq[0])
+                    other_matches_other = np.all(other_obj_freq == other_obj_freq[0])
+
+                    if not (other_matches_self and other_matches_other):
+                        # The frequency ends do not match
+                        return False
+
+        else:
+            # Neither object contains complex-FM data, so we perform all checks on the
+            # frequency attribute
+
+            # Check if the other object's frequency attribute is an array
+            if isinstance(other_obj.frequency, np.ndarray):
+                # It is, which means the other object is a raw_data object or a processed_data 
+                # object containing Sv(f) or TS(f)
+
+                # Check that this object's frequency attribute is also an array
+                if not isinstance(self.frequency, np.ndarray):
+                    # it is not so this is not the driod we're looking for
+                    return False
+
+                #  get the other object's frequency info - ignoring NaNs
+                other_obj_freqs = other_obj.frequency[~np.isnan(other_obj.frequency)]
+
+                # If there is at least 1 frequency that isn't NaN, we check it
+                if other_obj_freqs.shape[0] > 0:
+
+                    # check that the first element of other matches all in self, and that 
+                    # the first element in other matches all in other. If both are true, then
+                    # our frequencies match.
+                    other_matches_self = np.all(self.frequency[~np.isnan(self.frequency)] == other_obj_freqs[0])
+                    other_matches_other = np.all(other_obj_freqs == other_obj_freqs[0])
+
+                    if not (other_matches_self and other_matches_other):
+                        # No match
+                        return False
+
+                else:
+                    # The other object must have no data (frequency values are all NaN) so we
+                    # match because you can insert/append "empty" data under the assumption that
+                    # you know what you are doing and will populate it accordingly.
+                    return True
+
+            else:
+                # the other object's frequency attribute is a scalar - this means that it is
+                # a processed_data object containing a single frequency.
+
+                # Check that this object's frequency attribute is also a scalar
+                if isinstance(self.frequency, np.ndarray):
+                    # it is not so this is not the driod we're looking for
+                    return False
+                
+                # If we're here, we have two objects with scalar frequency attributes
+                if self.frequency != other_obj.frequency:
+                    return False
+
+        # If we're here, we're good
+        return True
 
 
     def _grid_axis(self, axis_data, axis_size):

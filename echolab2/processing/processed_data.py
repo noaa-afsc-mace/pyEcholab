@@ -260,7 +260,8 @@ class processed_data(ping_data):
 
 
     def insert(self, obj_to_insert, ping_number=None, ping_time=None,
-               insert_after=True, index_array=None, force=False):
+               insert_after=True, index_array=None, force=False,
+               time_order=False):
         """Inserts the data from the provided echolab2.processed_data object
         into this object.
 
@@ -297,15 +298,24 @@ class processed_data(ping_data):
                     obj_to_insert.data_type + ' data into an object that ' +
                     'contains ' + self.data_type + ' data.')
 
-        # Regrid the object we're inserting to our vertical axis (if the
-        # vertical axes are the same regrid will return w/o doing anything).
-        obj_to_insert.match_samples(self)
+        # Check if we need to match the vertical axis of the other object
+        # to this object.
+        match_check = obj_to_insert.match_samples(self, _check_only=True)
+        if np.any(match_check):
+            # We do need to match - since matching operates on the object,
+            # make a copy of the "other" object so we don't alter the original.
+            copy_of_obj_to_insert = obj_to_insert.copy()
+            # and match the samples
+            copy_of_obj_to_insert.match_samples(self, _check_result=match_check)
+        else:
+            # we don't need to alter the other object so just copy the reference
+            copy_of_obj_to_insert = obj_to_insert
 
         # We are now coexisting in harmony - call parent's insert.
-        super(processed_data, self).insert(obj_to_insert,
+        super(processed_data, self).insert(copy_of_obj_to_insert,
                 ping_number=ping_number, ping_time=ping_time,
                 insert_after=insert_after, index_array=index_array,
-                force=force)
+                force=force, time_order=time_order)
 
 
     def empty_like(self, n_pings=None, empty_times=False, channel_id=None,
@@ -860,13 +870,10 @@ class processed_data(ping_data):
         self.is_log = True
 
 
-
-
     def resample_by_axes(self, v_height, h_length, v_axis='range', h_axis='ping_number',
             method='area_weighted'):
         """resample_by_axes resamples pings in both vertical and/or along track dimensions.
        
-        Resampling is done by conservative regridding, or area weighted averaging.
        
         Args:
             v_height (int, float, None): Specify the vertical height of the new samples in 
@@ -944,6 +951,11 @@ class processed_data(ping_data):
 
 
     def brute_force_resample(self, v_height, h_length, v_axis='range', h_axis='ping_number'):
+        '''brute_force_resample is here only for testing and will be removed.
+
+            DO NOT USE. This works, but is for testing only.
+
+        '''
 
         # First convert to linear space if we are in log space. We will convert back
         # to log space after resampling.
@@ -970,7 +982,9 @@ class processed_data(ping_data):
                     #  resample the line data to match the new horizontal dimensions
                     attr_data.interpolate(self.ping_time)
 
-    def match_samples(self, other_obj, _return_data=False):
+
+    def match_samples(self, other_obj, method='area_weighted', _check_only=False,
+            _check_result=None):
         '''match_samples adjusts the vertical axis of this object to match the vertical
         axis of the provided processed_data object. This method is similar to the Echoview
         Match Geometry operator.
@@ -983,24 +997,30 @@ class processed_data(ping_data):
         this method does nothing.
 
         If the sample thickness differs between this object and the other, this object's
-        data will be resampled to to match the other objects axis. Resampling is a linear
-        combination of the inputs based on the fraction of the source bins to the range bins.
-        The sum of the sample data in a ping will be the same between the original data
-        and the resampled data.
+        data will be resampled to to match the other objects axis. The default resampling
+        method is area_weighted where the samples that are only partially covered by the
+        new grid will be weighted according to the fraction of the sample that is covered.
 
         NOTE! This method does not handle cases where sample_offset differs between
         this and the other object. If the sample_offsets are different, this method will
         raise an error. Handling these cases is not *that* difficult, we just don't
         run into cases like this. You're free to add handling for this if needed.
 
-
-        Original resampling code by: Nils Olav Handegard, Alba Ordonez, Rune Øyerhamn
-        https://github.com/CRIMAC-WP4-Machine-learning/CRIMAC-preprocessing/blob/NOH_pyech/regrid.py
-
         Args:
             other_obj (processed_data): Pass a reference to the processed_data object
                     with the vertical axis you would like this object to match.
 
+            method (str): Set to a string specifying the method to use when resampling. Options
+                are:
+
+                'area_weighted': Samples that are only partially covered by the new grid will be
+                weighted according to the fraction of the sample that is covered. This is also
+                known as conservative regridding and is the default method.
+
+                'center_weighted': Samples that are only partially covered by the new grid will be
+                weighted as 1 if the center of the sample is covered and 0 if it is not.
+
+                Default: 'area_weighted'
 
         '''
 
@@ -1025,86 +1045,6 @@ class processed_data(ping_data):
             return new_array
 
 
-        def resample_weights(r_t, r_s):
-            """Generates the weights used for resampling
-            Original code by: Nils Olav Handegard, Alba Ordonez, Rune Øyerhamn
-            """
-
-            # Create target bins from target range
-            bin_r_t = np.append(r_t[0]-(r_t[1] - r_t[0])/2, (r_t[0:-1] + r_t[1:])/2)
-            bin_r_t = np.append(bin_r_t, r_t[-1]+(r_t[-1] - r_t[-2])/2)
-
-            # Create source bins from source range
-            bin_r_s = np.append(r_s[0]-(r_s[1] - r_s[0])/2, (r_s[0:-1] + r_s[1:])/2)
-            bin_r_s = np.append(bin_r_s, r_s[-1]+(r_s[-1] - r_s[-2])/2)
-
-            # Initialize W matrix
-            W = sparse.lil_matrix((len(r_t), len(r_s)+1), dtype=self.sample_dtype)
-
-            # Loop over the target bins
-            for i, rt in enumerate(r_t):
-
-                # Check that this is not an edge case
-                if bin_r_t[i] > bin_r_s[0] and bin_r_t[i+1] < bin_r_s[-1]:
-                    # Compute the size of the target bin
-                    drt = bin_r_t[i+1] - bin_r_t[i]
-
-                    # find the indices in source that overlap this target bin
-                    j0 = np.searchsorted(bin_r_s, bin_r_t[i], side='right') - 1
-                    j1 = np.searchsorted(bin_r_s, bin_r_t[i+1], side='right')
-
-                    # CASE 1: Target higher resolution, overlapping 1 source bin
-                    # target idx     i    i+1
-                    # target    -----[-----[-----
-                    # source    --[-----------[--
-                    # source idx  j0          j1
-
-                    if j1-j0 == 1:
-                        W[i, j0] = 1
-
-                    # CASE 2: Target higher resolution, overlapping 1 source bin
-                    # target idx      i   i+1
-                    # target    --[---[---[---[-
-                    # source    -[------[------[-
-                    # source idx j0            j1
-
-                    elif j1-j0 == 2:
-                        W[i, j0] = (bin_r_s[j0+1]-bin_r_t[i])/drt
-                        W[i, j1-1] = (bin_r_t[i+1]-bin_r_s[j1-1])/drt
-
-                    # CASE 3: Target lower resolution
-                    # target idx    i       i+1
-                    # target    ----[-------[----
-                    # source    --[---[---[---[--
-                    # source idx  j0          j1
-
-                    elif j1-j0 > 2:
-                        for j in range(j0, j1):
-                            if j == j0:
-                                W[i, j] = (bin_r_s[j+1]-bin_r_t[i])/drt
-                            elif j == j1-1:
-                                W[i, j] = (bin_r_t[i+1]-bin_r_s[j])/drt
-                            else:
-                                W[i, j] = (bin_r_s[j+1]-bin_r_s[j])/drt
-
-                #  Edge case 1
-                # target idx    i       i+1
-                # target    ----[-------[----
-                # source        #end# [---[---[
-                # source idx          j0  j1
-
-                #  Edge case 2
-                # target idx    i       i+1
-                # target    ----[-------[----
-                # source    --[---[ #end#
-                # source idx  j0  j1
-                else:
-                    # Edge case (NaN must be in W, not in sv_s. Or else np.dot failed)
-                    W[i, -1] = np.nan
-
-            return W
-
-
         #  check to make sure the sample offsets are the same between this and the other
         #  object. Currently we don't handle cases where they are different.
         if self.sample_offset != other_obj.sample_offset:
@@ -1114,112 +1054,140 @@ class processed_data(ping_data):
 
         # Get the vertical axes for the source and target objects
         this_v_axis, this_axis_type = self.get_v_axis()
-        target_v_axis, other_axis_type = other_obj.get_v_axis(return_copy=True)
+        target_v_axis, other_axis_type = other_obj.get_v_axis()
 
-        # Check if they share the same axis type - we'll not allow regridding if the
-        # axis types are different.
-        if this_axis_type != other_axis_type:
-            raise AttributeError("The provided data object's vertical axis type (" +
-                    other_axis_type +  ") does not match this object's type (" +
-                    this_axis_type + "). The axes types " + "must match.")
+        # Internal functions may call this in two steps - this just checks for that
+        if not _check_result:
 
-        #  There are a couple of cases we need to handle. The first case is where the
-        #  sample sizes between the two PD objects are the same, but the lengths
-        #  (range/depth) are different. The other is where the sample sizes are different.
-        #  The prior is a simple extension or truncation of data while the latter requires
-        #  resampling and is more computationally expensive.
-        resample_this = False
-        truncate_this = False
-        extend_this = False
+            # Check if they share the same axis type - we'll not allow regridding if the
+            # axis types are different.
+            if this_axis_type != other_axis_type:
+                raise AttributeError("The provided data object's vertical axis type (" +
+                        other_axis_type +  ") does not match this object's type (" +
+                        this_axis_type + "). The axes types " + "must match.")
 
-        # Check if the new axis is the the same length.
-        if this_v_axis.size == target_v_axis.size:
-            # check if they are identical.
-            if np.all(np.isclose(this_v_axis, target_v_axis)):
-                # They are identical.  Nothing to do so just return.
-                return
+            #  There are a couple of cases we need to handle. The first case is where the
+            #  sample sizes between the two PD objects are the same, but the lengths
+            #  (range/depth) are different. The other is where the sample sizes are different.
+            #  The prior is a simple extension or truncation of data while the latter requires
+            #  resampling and is more computationally expensive.
+            resample_this = False
+            truncate_this = False
+            extend_this = False
+
+            # Check if the new axis is the the same length.
+            if this_v_axis.size == target_v_axis.size:
+                # check if they are identical.
+                if np.all(np.isclose(this_v_axis, target_v_axis)):
+                    # They are identical.  Nothing to do so just return.
+                    return
+                else:
+                    # same length but axes don't match, must resample
+                    resample_this = True
             else:
-                # same length but axes don't match, must resample
-                resample_this = True
+                #  axes are not the same length. Check if the difference is simply
+                #  a matter of recording range
+                if this_v_axis.size > target_v_axis.size:
+                    if np.all(np.isclose(this_v_axis[:target_v_axis.size], target_v_axis)):
+                        #  axes are the same but this_v_axis is longer so we truncate this object
+                        truncate_this = True
+                    else:
+                        #  axes are different and must be regridded
+                        resample_this = True
+                else:
+                    if np.all(np.isclose(this_v_axis, target_v_axis[:this_v_axis.size])):
+                        #  axes are the same but this_v_axis is shorter so we extend this object
+                        extend_this = True
+                    else:
+                        #  axes are different and must be regridded
+                        resample_this = True
+
+            if _check_only:
+                # Internal functions like insert/append will sometimes need to match the "other"
+                # object's samples. In these cases, we have to operate on a copy so we don't
+                # alter the original data. But we don't want to copy the object if we don't need
+                # to so we set the _check_only keyword to first check if we need to match. Then
+                # we can copy the other object if needed.
+                return [resample_this, truncate_this, extend_this]
+            
         else:
-            #  axes are not the same length. Check if the difference is simply
-            #  a matter of recording range
-            if this_v_axis.size > target_v_axis.size:
-                if np.all(np.isclose(this_v_axis[:target_v_axis.size], target_v_axis)):
-                    #  axes are the same but this_v_axis is longer so we truncate this object
-                    truncate_this = True
-                else:
-                    #  axes are different and must be regridded
-                    resample_this = True
-            else:
-                if np.all(np.isclose(this_v_axis, target_v_axis[:this_v_axis.size])):
-                    #  axes are the same but this_v_axis is shorter so we extend this object
-                    extend_this = True
-                else:
-                    #  axes are different and must be regridded
-                    resample_this = True
+            # An internal function has already checked if we need to match samples and
+            # has passed the check results back so we just unpack them here
+            resample_this, truncate_this, extend_this = _check_result
 
         #  now that we know what we need to do, er, do it
         if resample_this:
-            # create the output array, add a row of zeros at the bottom to be used in edge cases
-            sv_s_mod = np.full((self.data.shape[1]+1, self.data.shape[0]), 1e-30,
-                dtype=self.sample_dtype)
-            sv_s_mod[0:self.data.shape[1],0:self.data.shape[0]] = \
-                    np.rot90(self.data[0:self.data.shape[0], 0:self.data.shape[1]])
+            # we have to vertically resample 
 
-            # Generate the weights
-            weights = resample_weights(target_v_axis, this_v_axis)
+            #  create the NaN mask of the data
+            mask = np.isnan(self.data)
 
-            # If _return_data is set, we'll just return the data. Otherwise we update
-            # this objects attributes.
-            if not _return_data:
-                # Compute the regridded values - update shape and sample count
-                self.data = np.rot90(weights.dot(sv_s_mod), k=-1)
-                self.shape = self.data.shape
-                self.n_samples = self.data.shape[1]
+            # zero out NaNs so they don't contribute to the weighted average.
+            self.data[mask] = 0
 
-                # Update this object's vertical axis
-                setattr(self, this_axis_type, target_v_axis)
+            # invert the mask to represent the valid data. It will be transformed, along
+            # with the data, and then we'll divide it into the data to compute the mean.
+            np.logical_not(mask, out=mask)
+
+            # Create arrays of the source and destination vertical grids. Axes values are
+            # centered on the samples, so we shift the axes 1/2 sample thickness and add
+            # the bottom edge by taking the last axis value and adding 1/2 thickness
+            source_grid_edges = np.append(this_v_axis - self.sample_thickness / 2, 
+                    this_v_axis[-1] + self.sample_thickness / 2)
+            target_grid_edges = np.append(target_v_axis - other_obj.sample_thickness / 2, 
+                    target_v_axis[-1] + other_obj.sample_thickness / 2)
+
+            # compute the weights for the vertical axis resampling.
+            if method == 'area_weighted':
+                v_weights = self._get_area_weighted_weights(source_grid_edges,
+                        target_grid_edges)
+            elif method == 'center_weighted':
+                v_weights = self._get_center_weighted_weights(source_grid_edges,
+                        target_grid_edges)
             else:
-                # Return the gridded data only
-                sv_s_mod = np.rot90(np.matmul(weights, sv_s_mod), k=-1)
-                return sv_s_mod
+                raise ValueError("Invalid resampling method specified. Valid options are"
+                        " 'area_weighted' and 'center_weighted'.")
+
+            # resample the data along the vertical axis. Again, we handle the data
+            # and sample nan mask separately.
+            resampled_num = self.data @ v_weights.T
+            resampled_den = mask.astype('float') @ v_weights.T
+
+            # Compute the means by dividing the resampled data values by
+            # the resampled "good samples" mask.
+            resampled_data = np.divide(resampled_num, resampled_den, 
+                            out=np.full_like(resampled_num, np.nan), 
+                            where=resampled_den > 0)
+
+            # update this objects attributes with the resampled data
+            self.data = resampled_data
+            self.shape = resampled_data.shape
+            self.n_samples = resampled_data.shape[1]
+
+            # Update this object's vertical axis
+            setattr(self, this_axis_type, target_v_axis)
 
         elif extend_this:
             # extend the vertical axis of this object to match the other object.
 
-            # If _return_data is set, we'll just return the data. Otherwise we update
-            # this objects attributes.
-            if not _return_data:
-                # resize this object's data array, padding with NaNs and update attributes
-                self.data = resize2dv(self.data, target_v_axis.size)
-                self.shape = self.data.shape
-                self.n_samples = self.data.shape[1]
+            # resize this object's data array, padding with NaNs and update attributes
+            self.data = resize2dv(self.data, target_v_axis.size)
+            self.shape = self.data.shape
+            self.n_samples = self.data.shape[1]
 
-                # Update this object's vertical axis
-                setattr(self, this_axis_type, target_v_axis)
-            else:
-                # Return the gridded data only
-                sv_s_mod = resize2dv(self.data, target_v_axis.size)
-                return sv_s_mod
+            # Update this object's vertical axis
+            setattr(self, this_axis_type, target_v_axis)
 
         elif truncate_this:
             # truncate this object vertically to match the other
 
-            # If _return_data is set, we'll just return the data. Otherwise we update
-            # this objects attributes.
-            if not _return_data:
-                # truncate this object's data array, padding with NaNs and update attributes
-                self.data = self.data[:, 0:target_v_axis.size]
-                self.shape = self.data.shape
-                self.n_samples = self.data.shape[1]
+            # truncate this object's data array, padding with NaNs and update attributes
+            self.data = self.data[:, 0:target_v_axis.size]
+            self.shape = self.data.shape
+            self.n_samples = self.data.shape[1]
 
-                # Update this object's vertical axis
-                setattr(self, this_axis_type, target_v_axis)
-            else:
-                # Return the gridded data only
-                sv_s_mod = self.data[:, 0:target_v_axis.size]
-                return sv_s_mod
+            # Update this object's vertical axis
+            setattr(self, this_axis_type, target_v_axis)
 
 
     def match_pings(self, other_data, **kwargs):
@@ -2940,3 +2908,4 @@ def create_test_data(n_pings, n_samples, block_shape=(20,20),
         return p_data, p_data_athwart
     else:
         return p_data
+

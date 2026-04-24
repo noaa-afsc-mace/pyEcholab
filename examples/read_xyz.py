@@ -63,13 +63,13 @@ from echolab2.plotting.matplotlib import echogram
 
 
 #  set the path to a xyz file to read
-xyz_38_file = 'C:/EK Test Data/EK80/DY2308/cw/DY2308_EK80-D20230702-T181248-ES38-7 Serial No  324 - Narrow.XYZ'
+xyz_38_file = './data/EK80/cw/Drix12/raw/DriX12_DY2308-D20230719-T115722-ES38-18 200-18CR Serial No  77104 - 38-18.XYZ'
 
 
 #  Set the path to a raw file to read. This is used for the part of the example
 #  where we use the echosounder module to read the raw data and the corresponding
 #  bottom files. The bottom files must be colocated with the raw data.
-rawfile = 'C:/EK Test Data/EK80/DY2308/cw/DY2308_EK80-D20230702-T181248.raw'
+rawfile = './data/EK80/cw/Drix12/raw/DriX12_DY2308-D20230719-T115722.raw'
 
 
 

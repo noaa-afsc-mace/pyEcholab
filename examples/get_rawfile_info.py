@@ -3,10 +3,13 @@
 and prints out a bunch of information about the raw file.
 
 While useful on its own, this example shows how to access the file and
-channel metadata within a raw file.
+channel metadata within a raw file. See also echosounder.get_rawfile_info()
+which uses .idx files to efficiently return basic informaiton about the data
+in a rawfile.
 '''
 
 import os
+import sys
 import argparse
 import numpy as np
 from echolab2.instruments import echosounder, EK80
@@ -15,14 +18,18 @@ from echolab2.instruments import echosounder, EK80
 #  create the argument parser. Set the application description.
 parser = argparse.ArgumentParser(description='get_rawfile_info')
 
-#  specify the positional arguments: filename
-parser.add_argument("raw_file", help="The full path to the raw file to extract info from.")
+#  specify the positional arguments: raw_file_name
+parser.add_argument("raw_file_name", help="The full path to the raw file to extract info from.")
 
-#  parse our arguments
-args = parser.parse_args()
+#  try to parse the input file argument
+try:
+    args = parser.parse_args()
+except:
+    # no file path provided - exit 
+    sys.exit(0)
 
 #  normalize the path
-raw_file = os.path.normpath(args.raw_file)
+raw_file = os.path.normpath(args.raw_file_name)
 
 #  get the file size
 size_mib = os.path.getsize(raw_file)  / (1024 * 1024)

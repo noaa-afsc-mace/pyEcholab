@@ -342,7 +342,7 @@ class Echogram(object):
         cb.set_label(units)
 
 
-    def plot_integration_results(self, int_obj, color=[0.7,0,0], size=10):
+    def plot_integration_results(self, int_obj, color=[0.6,0,0], size=10):
         """Plots nasc values output from echolab2.processing.integration class
 
         Args:

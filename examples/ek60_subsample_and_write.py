@@ -23,14 +23,12 @@ subsample_n_pings = 50
 skip_n_pings = 100
 
 # Specify the in file(s) to subsample
-in_files = ['../examples/data/EK60/OfotenDemo-D20001214-T145902.raw',
-            '../examples/data/EK60/OfotenDemo-D20001214-T154020.raw',
-            '../examples/data/EK60/OfotenDemo-D20001214-T162003.raw',
-            '../examples/data/EK60/OfotenDemo-D20001214-T164709.raw']
+in_files = ['./data/EK60/DY1603/raw/DY1603_EK60-D20160308-T115724.raw',
+            './data/EK60/DY1603/raw/DY1603_EK60-D20160308-T121526.raw']
 
 # Specify the output path and subsampled raw file base name. The write
 # method will add the date and time.
-out_dir = 'C:/Temp_EK_Test/subsample_1'
+out_dir = './data/EK60/DY1603/raw/subsample_example_out_'
 
 # Create an instance of the EK60 instrument.
 ek60 = EK60.EK60()

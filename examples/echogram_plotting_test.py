@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""echogram_plotting_test.py demonstrates plotting echograms using fake data.
+"""echogram_plotting_test.py checks the matplotlib based echogram class.
 
 It is primarily intended to test the processed_data and echogram classes. As
 configured, this will plot a 60 pings x 100 samples array with samples that
@@ -8,7 +8,6 @@ will then be plotted on top of the samples.
 
 If everything is working, the samples should be centered perfectly on the
 grid lines.
-
 """
 
 import numpy as np
@@ -54,13 +53,11 @@ eg.axes.set_title("Echogram Plot Test")
 h_line = line.line(ping_time=np.array([fake_Sv.ping_time[0], fake_Sv.ping_time[-1]]),
         data=np.array([0, 0]), color=[0.3,0,0.3])
 n_lines = int((fake_Sv.range[-1] / (sample_thickness_m * 10)) + 0.5) + 1
-print(n_lines)
 
 # Now draw the horizontal lines
 for i in range(n_lines):
     eg.plot_line(h_line)
     h_line = h_line + (sample_thickness_m * 10)
-    print(h_line.data)
 
 # Create a vertical line that we'll draw at the alongship center of each sample.
 v_line = line.line(ping_time=np.array([fake_Sv.ping_time[0], fake_Sv.ping_time[0]]),

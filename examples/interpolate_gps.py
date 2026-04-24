@@ -8,15 +8,16 @@ as MRU datagrams. Regardless of how this data is stored, it is collected
 asyncronously so the GPS fixes, heading values etc. are not synced to the ping
 data.
 
+(Side note, NMEA data is also stored in ES60 .out files. While methods exist to
+read this data, i'm not covering that here.)
+
 When working with transformed data (Sv, Sp, power) it is convienient to interpolate
 these data to the ping times and the echosounder.read* functions will do this
-for you. But in some cases you may want to interpolate this data for a different
-use. This script demonstrates accessing NMEA and MRU data directly and interpolating
-data on an arbitrary time axis.
-
-If you simply want Sv data with NMEA/MRU data interpolated to the ping times, you
-can use the echosounder module which will do this for you.
-
+for you. If you simply want Sv or TS data with NMEA/MRU data interpolated to the ping
+times, you can use the echosounder module which will do this for you.But in some
+cases you may want to interpolate this data for a different use. This script
+demonstrates accessing NMEA and MRU data directly and interpolating data on an
+arbitrary time axis.
 """
 
 import numpy as np
@@ -29,7 +30,7 @@ The first example shows how to read a raw file and interpolate NMEA based data.
 
 #  read in a raw file where the position data is stored as NMEA datagrams. To
 #  keep things simple, we will only read the 38 kHz data.
-rawfiles = ['C:/EK Test Data/EK80/DY2104/cw/DY2104-D20210602-T101508.raw']
+rawfiles = ['./data/EK80/cw/DY2104/raw/DY2104-D20210602-T102103.raw']
 print('Reading data...')
 ek_data = echosounder.read(rawfiles, frequencies=[38000])
 print(ek_data)
@@ -164,7 +165,7 @@ data to work with but it is included here to illustrate a
 
 #  read in a raw file where the position data was only stored in the motion datagrams.
 print('Reading DriX data...')
-rawfiles = ['C:/EK Test Data/EK80/Drix12/Drix12-D20230125-T160206.raw']
+rawfiles = ['./data/EK80/cw/Drix12/raw/Drix12-D20230125-T160206.raw']
 drix_data = echosounder.read(rawfiles)
 print(drix_data)
 

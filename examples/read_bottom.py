@@ -2,9 +2,10 @@
 """Reads raw and bot files and plots data.
 
 This script is an echolab2 example demonstrating how to read raw and bot
-files and plot echograms of the data. It demonstrates the basics of reading
-raw and bottom data, getting a calibration object, altering a cal parameter,
-then getting Sv and bottom data in displaying it in various ways.
+files and plot echograms of the data using the EK60 class. It demonstrates
+the basics of reading raw and bottom data, getting a calibration object,
+altering a cal parameter, then getting Sv and bottom data in displaying
+it in various ways.
 
 The EK80 class shares the same API for reading .bot files.
 
@@ -61,10 +62,10 @@ from echolab2.plotting.matplotlib import echogram
 
 
 # Create a list of .raw files.
-rawfiles = ['C:/EK Test Data/EK60/DY1603/raw/DY1603_EK60-D20160308-T111745.raw']
+rawfiles = ['./data/EK60/DY1603/raw/DY1603_EK60-D20160308-T115724.raw']
 
 # Also create a list of corresponding .bot files.
-botfiles = ['C:/EK Test Data/EK60/DY1603/raw/DY1603_EK60-D20160308-T111745.bot']
+botfiles = ['./data/EK60/DY1603/raw/DY1603_EK60-D20160308-T115724.bot']
 
 # Create an instance of EK60.
 ek60 = EK60.EK60()

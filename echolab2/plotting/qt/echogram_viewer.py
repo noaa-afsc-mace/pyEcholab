@@ -1,6 +1,7 @@
 
 import os
 import functools
+import numpy as np
 from PyQt6 import QtCore, QtWidgets
 from PyQt6.QtCore import  pyqtSlot
 from .ui import ui_echogram_viewer
@@ -101,9 +102,16 @@ class echogram_viewer(QtWidgets.QMainWindow, ui_echogram_viewer.Ui_echogram_view
         style, and width of the line is defined in the line object.
         '''
 
-        # Convert from matplotlib's 0.0-1.0 color values that are the default 
-        # for echolab objects to Qt 0-255 values
-        color = [int(x * 255) for x in line.color]
+        # Check if we need to convert from matplotlib's 0.0-1.0 color
+        # values that are the default for echolab objects to Qt 0-255
+        # values. The logic isn't bullet proof. If you pass (1,1,1) 
+        # intending for esentially black, you'll get white.
+        color = np.array(line.color)
+        if np.any(color > 0.) and np.any(color <= 1.0):
+            # convert the color to 0-255 values
+            color = [int(x * 255) for x in line.color]
+        else:
+            color = line.color
 
         #  add the cosmetic properties to the arguments.
         kwargs = dict(kwargs, color=color, linestyle=line.linestyle,
