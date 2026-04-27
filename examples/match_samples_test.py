@@ -145,5 +145,4 @@ eg.axes.set_title("Fake Sv 1 inserted into Fake Sv 2")
 # Display figure.
 show()
 
-
 print()

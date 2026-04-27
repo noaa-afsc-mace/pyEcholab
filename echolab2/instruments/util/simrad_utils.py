@@ -68,7 +68,6 @@ def get_simrad_bottom_files(datafile_name, data_object, prefer_xyz=True, skip_xy
             if bottom_files:
                 type = 'BOT'
         else:
-            #  for now we
             type = 'XYZ'
     else:
         bottom_files = get_bot_filename(basename)
@@ -107,9 +106,10 @@ def get_xyz_filenames(basename, data_object, raw_index=0):
         else:
             mux_id = ''
 
-        #  generate the xyz file channel id using the "short" id and
-        #  replacing the colon (illegal filename character) with a space
+        #  generate the xyz file channel id using the "short" id and replacing
+        #  the colon and bar (illegal filename characters) with spaces
         xyz_id = raw_obj.configuration[-1]['channel_id_short'].replace(':',' ')
+        xyz_id = xyz_id.replace('|',' ')
 
         #  add the mux/sequence ID
         if mux_id:

@@ -11,9 +11,6 @@ echosounder module's get_* methods. These methods will return processed
 data with the bottom line included as the "bottom_line" attribute.
 
 This example is intended to demonstrate how to do things the hard way.
-(But not the *really* hard way. It still leverages the echosounder module
-to read the raw and xyz data files.)
-
 
 Definitions:
 
@@ -72,7 +69,6 @@ xyz_38_file = './data/EK80/cw/Drix12/raw/DriX12_DY2308-D20230719-T115722-ES38-18
 rawfile = './data/EK80/cw/Drix12/raw/DriX12_DY2308-D20230719-T115722.raw'
 
 
-
 #  if you simply want to read an .xyz file and do not care about the sample
 #  data, you can use the echolab2.processing.line class to read the data and
 #  return a line object containing the data. This will include the lat/lon,
@@ -89,17 +85,16 @@ print('reading the XYZ file...')
 bottom_line_38 = line.read_xyz(xyz_38_file)
 print(bottom_line_38)
 '''
-<class 'echolab2.processing.line.line'> at 0x22f7f01c850
+<class 'echolab2.processing.line.line'> at 0x2a5c4cd5890
                  line name: xyz_line
-             n data points: 150
-                start time: 2023-06-10T16:19:15.790
-                  end time: 2023-06-10T16:21:51.590
-         object attributes: ping_time (150)
-                            latitude (150)
-                            longitude (150)
-                            transducer_draft (150)
+             n data points: 94754
+                start time: 2023-07-19T11:57:22.780
+                  end time: 2023-07-20T22:45:15.750
+         object attributes: ping_time (94754)
+                            latitude (94754)
+                            longitude (94754)
+                            transducer_draft (94754)
 '''
-
 
 
 #  if you want to read the .xyz file and work with the sample data, then you
@@ -112,21 +107,21 @@ echosounder_data = echosounder.read(rawfile)
 #  print some basic info about the data we read
 print(echosounder_data)
 '''
-<class 'echolab2.instruments.EK80.EK80'> at 0x1e040e88810
-    EK80 object contains data from 5 channels:
-        WBT 998500-15 ES18_ES :: power/angle (1784, 24197)
-        WBT 978217-15 ES38-7_ES :: power/angle (1784, 33875)
-        WBT 978213-15 ES70-7C_ES :: power/angle (1784, 28229)
-        WBT 976714-15 ES120-7C_ES :: power/angle (1784, 28229)
-        WBT 978208-15 ES200-7C_ES :: power/angle (1784, 33875)
-    data start time: 2023-07-02T18:12:48.996
-      data end time: 2023-07-02T18:45:36.281
-    number of pings: 1784
+<class 'echolab2.instruments.EK80.EK80'> at 0x2a5c57f3b10
+    EK80 object contains data from 4 channels:
+        WBT Tube 279893-15 ES120-7C_ES :: power/angle (605, 28163)
+        WBT Tube 279898-15 ES70-7C_ES :: power/angle (605, 28163)
+        WBT Tube 277104-7 ES38-18|200-18CR_ES :: power/angle (605, 33796)
+        WBT Tube 277104-8 ES38-18|200-18CR_ES :: power (605, 33796)
+    data start time: 2023-07-19T11:57:22.785
+      data end time: 2023-07-19T12:07:26.751
+    number of pings: 605
 '''
 
 #  most users would call one of the echosounder_data.get_* methods to get a processed
 #  data object that contains the transformed sample data as well as bottom line. In this
-#  example we'll do this all the hard way.
+#  example we'll do this all the hard way to illustrate accessing this data directly for
+#  cases where the canned methods are not suitable.
 
 #  get the raw data for the 38 and 120 channels - we know that we have read a single EK80
 #  file that contains data of a single data type so we know there will only be one
@@ -150,28 +145,28 @@ cal_38 = raw_data_38.get_calibration()
 cal_120 = raw_data_120.get_calibration()
 print(cal_38)
 '''
-<class 'echolab2.instruments.EK80.ek80_calibration'> at 0x161e4f807d0
-                         frequency :: array 150 :: First value: 38000.0
+<class 'echolab2.instruments.EK80.ek80_calibration'> at 0x2a5c4df9e50
+                         frequency :: array 605 :: First value: 38000.0
                    frequency_start :: No value set
                      frequency_end :: No value set
-                    transmit_power :: scalar :: Value: 2000.0
+                    transmit_power :: scalar :: Value: 500.0
                     pulse_duration :: scalar :: Value: 0.000512
                      sample_offset :: scalar :: Value: 0
                       channel_mode :: scalar :: Value: 0
                         pulse_form :: scalar :: Value: 0
                    sample_interval :: scalar :: Value: 2e-05
                              slope :: scalar :: Value: 0.205592
-                      sample_count :: scalar :: Value: 34106
+                      sample_count :: scalar :: Value: 33796
                  pulse_duration_fm :: array 5 :: First value: 0.000512
-                              gain :: array 150 :: First value: 25.5
-                     sa_correction :: array 150 :: First value: 0.0
-             equivalent_beam_angle :: array 150 :: First value: -20.7
-       angle_sensitivity_alongship :: array 150 :: First value: 18.0
-     angle_sensitivity_athwartship :: array 150 :: First value: 18.0
-            angle_offset_alongship :: array 150 :: First value: -0.03
-          angle_offset_athwartship :: array 150 :: First value: 0.07
-              beam_width_alongship :: array 150 :: First value: 6.42
-            beam_width_athwartship :: array 150 :: First value: 6.54
+                              gain :: array 605 :: First value: 18.3
+                     sa_correction :: array 605 :: First value: -0.24
+             equivalent_beam_angle :: array 605 :: First value: -12.5
+       angle_sensitivity_alongship :: array 605 :: First value: 10.5
+     angle_sensitivity_athwartship :: array 605 :: First value: 10.5
+            angle_offset_alongship :: array 605 :: First value: -0.12
+          angle_offset_athwartship :: array 605 :: First value: -0.12
+              beam_width_alongship :: array 605 :: First value: 16.31
+            beam_width_athwartship :: array 605 :: First value: 16.28
  directivity_drop_at_2x_beam_width :: scalar :: Value: 0.0
                transducer_offset_x :: scalar :: Value: 0.0
                transducer_offset_y :: scalar :: Value: 0.0
@@ -179,33 +174,33 @@ print(cal_38)
                 transducer_alpha_x :: scalar :: Value: 0.0
                 transducer_alpha_y :: scalar :: Value: 0.0
                 transducer_alpha_z :: scalar :: Value: 0.0
-                   transducer_name :: scalar :: Value: ES38-7
-          hw_channel_configuration :: scalar :: Value: 15
-               rx_sample_frequency :: array 150 :: First value: 1500000.0
+                   transducer_name :: scalar :: Value: ES38-18|200-18CR
+          hw_channel_configuration :: scalar :: Value: 7
+               rx_sample_frequency :: array 605 :: First value: 1500000.0
                          time_bias :: scalar :: Value: 0
                transducer_mounting :: scalar :: Value: DropKeel
-                  transceiver_type :: scalar :: Value: WBT
-                         impedance :: scalar :: Value: 5400
+                  transceiver_type :: scalar :: Value: WBT Tube
+                         impedance :: scalar :: Value: 10800
               transducer_frequency :: scalar :: Value: 38000.0
-      transducer_frequency_minimum :: scalar :: Value: 34000.0
+      transducer_frequency_minimum :: scalar :: Value: 35000.0
       transducer_frequency_maximum :: scalar :: Value: 45000.0
-              transducer_beam_type :: scalar :: Value: 65
-                             depth :: scalar :: Value: 70.0
+              transducer_beam_type :: scalar :: Value: 17
+                             depth :: scalar :: Value: 20.0
                            acidity :: scalar :: Value: 8.0
-                          salinity :: scalar :: Value: 33.0
-                       sound_speed :: scalar :: Value: 1466.0
-                       temperature :: scalar :: Value: 4.0
+                          salinity :: scalar :: Value: 31.4
+                       sound_speed :: scalar :: Value: 1479.48574882494
+                       temperature :: scalar :: Value: 8.3
                           latitude :: scalar :: Value: 45.0
-            transducer_sound_speed :: scalar :: Value: [1466.0]
+            transducer_sound_speed :: scalar :: Value: [1518.0]
             sound_velocity_profile :: array 4 :: First value: 1.0
-                  drop_keel_offset :: scalar :: Value: 5.3
+                  drop_keel_offset :: scalar :: Value: 1.0
                  water_level_draft :: scalar :: Value: 0.0
 '''
 
 print(cal_120)
 '''
-<class 'echolab2.instruments.EK80.ek80_calibration'> at 0x161e51801d0
-                         frequency :: array 150 :: First value: 120000.0
+<class 'echolab2.instruments.EK80.ek80_calibration'> at 0x2a5c264d8d0
+                         frequency :: array 605 :: First value: 120000.0
                    frequency_start :: No value set
                      frequency_end :: No value set
                     transmit_power :: scalar :: Value: 250.0
@@ -215,17 +210,17 @@ print(cal_120)
                         pulse_form :: scalar :: Value: 0
                    sample_interval :: scalar :: Value: 2.4e-05
                              slope :: scalar :: Value: 0.0325521
-                      sample_count :: scalar :: Value: 28422
+                      sample_count :: scalar :: Value: 28163
                  pulse_duration_fm :: array 5 :: First value: 0.000512
-                              gain :: array 150 :: First value: 27.0
-                     sa_correction :: array 150 :: First value: 0.0
-             equivalent_beam_angle :: array 150 :: First value: -20.7
-       angle_sensitivity_alongship :: array 150 :: First value: 23.0
-     angle_sensitivity_athwartship :: array 150 :: First value: 23.0
-            angle_offset_alongship :: array 150 :: First value: -0.01
-          angle_offset_athwartship :: array 150 :: First value: -0.06
-              beam_width_alongship :: array 150 :: First value: 6.57
-            beam_width_athwartship :: array 150 :: First value: 6.54
+                              gain :: array 605 :: First value: 27.52
+                     sa_correction :: array 605 :: First value: 0.02
+             equivalent_beam_angle :: array 605 :: First value: -20.7
+       angle_sensitivity_alongship :: array 605 :: First value: 23.0
+     angle_sensitivity_athwartship :: array 605 :: First value: 23.0
+            angle_offset_alongship :: array 605 :: First value: 0.01
+          angle_offset_athwartship :: array 605 :: First value: 0.03
+              beam_width_alongship :: array 605 :: First value: 6.51
+            beam_width_athwartship :: array 605 :: First value: 6.53
  directivity_drop_at_2x_beam_width :: scalar :: Value: 0.0
                transducer_offset_x :: scalar :: Value: 0.0
                transducer_offset_y :: scalar :: Value: 0.0
@@ -235,24 +230,24 @@ print(cal_120)
                 transducer_alpha_z :: scalar :: Value: 0.0
                    transducer_name :: scalar :: Value: ES120-7C
           hw_channel_configuration :: scalar :: Value: 15
-               rx_sample_frequency :: array 150 :: First value: 1500000.0
+               rx_sample_frequency :: array 605 :: First value: 1500000.0
                          time_bias :: scalar :: Value: 0
                transducer_mounting :: scalar :: Value: DropKeel
-                  transceiver_type :: scalar :: Value: WBT
-                         impedance :: scalar :: Value: 5400
+                  transceiver_type :: scalar :: Value: WBT Tube
+                         impedance :: scalar :: Value: 10800
               transducer_frequency :: scalar :: Value: 120000.0
       transducer_frequency_minimum :: scalar :: Value: 90000.0
-      transducer_frequency_maximum :: scalar :: Value: 170000.0
+      transducer_frequency_maximum :: scalar :: Value: 150000.0
               transducer_beam_type :: scalar :: Value: 1
-                             depth :: scalar :: Value: 70.0
+                             depth :: scalar :: Value: 20.0
                            acidity :: scalar :: Value: 8.0
-                          salinity :: scalar :: Value: 33.0
-                       sound_speed :: scalar :: Value: 1466.0
-                       temperature :: scalar :: Value: 4.0
+                          salinity :: scalar :: Value: 31.4
+                       sound_speed :: scalar :: Value: 1479.48574882494
+                       temperature :: scalar :: Value: 8.3
                           latitude :: scalar :: Value: 45.0
-            transducer_sound_speed :: scalar :: Value: [1466.0]
+            transducer_sound_speed :: scalar :: Value: [1518.0]
             sound_velocity_profile :: array 4 :: First value: 1.0
-                  drop_keel_offset :: scalar :: Value: 5.3
+                  drop_keel_offset :: scalar :: Value: 1.0
                  water_level_draft :: scalar :: Value: 0.0
 '''
 
@@ -294,9 +289,9 @@ Sv_120_depth.heave_correct(echosounder_data.motion_data)
 bottom_38_as_depth_w_heave = raw_data_38.get_bottom(calibration=cal_38)
 bottom_120_as_depth_w_heave = raw_data_120.get_bottom(calibration=cal_120)
 
-# Set the color of our DEPTH_WITH_HEAVE lines to yellow
-bottom_38_as_depth_w_heave.color = [1, 1, 0]
-bottom_120_as_depth_w_heave.color = [1, 1, 0]
+# Set the color of our DEPTH_WITH_HEAVE lines to red
+bottom_38_as_depth_w_heave.color = [0.8, 0, 0]
+bottom_120_as_depth_w_heave.color = [0.8, 0, 0]
 
 # We'll first display the data on a range grid. The vertical axis for the
 # Sv data is already in range, but as stated above, the bottom detection
