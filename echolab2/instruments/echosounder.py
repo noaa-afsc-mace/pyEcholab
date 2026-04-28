@@ -1047,7 +1047,7 @@ def _get_processed_data(data_object, data_type, fm_frequency_domain=True, calibr
                 #  no cal provided - get one using the raw file parameters
                 cal_obj = raw_obj.get_calibration()
                 
-            #  then get the data
+            #  then get the data - stick Sv, Sp, and power types 
             if data_type == 'Sv':
                 if raw_obj.is_fm() & fm_frequency_domain:
                     p_data = raw_obj.get_Svf(calibration=cal_obj, **kwargs)
@@ -1058,61 +1058,75 @@ def _get_processed_data(data_object, data_type, fm_frequency_domain=True, calibr
             elif data_type == 'power':
                 p_data = raw_obj.get_power(calibration=cal_obj, **kwargs)
             elif data_type == 'angles':
+                # when getting angles, a tuple of processed_data objects is returned
+                # (p_data_alongship, p_data_athwartship)
                 p_data = raw_obj.get_physical_angles(calibration=cal_obj, **kwargs)
 
             #  add the navigation and motion data - this takes the asynchronous NMEA
             #  and motion data and interpolates it onto the ping time axis and stores
             #  the data in the processed data object.
 
-            #  first add the NMEA data - This will add the position, speed, attitude,
-            #  and distance meta-types (see instruments.util.nmea_data for more info)
-            p_data.set_navigation(data_object.nmea_data)
+            #  deal with the angle data tuple by making everything a tuple for this step
+            if not isinstance(p_data, tuple):
+                p_data = (p_data)
+            
+            for p in p_data:
 
-            #  then add the motion data - we'll check if we have lat data from the NMEA
-            #  data and if not, try to get it from the motion data. Some EK80 configurations
-            #  may only store lat/lon in the motion data and not as NMEA data.
-            if not hasattr(p_data, 'latitude'):
-                #  we didn't get lat/lon from the NMEA data so try to get it from motion data
-                p_data.set_motion(data_object.motion_data, motion_attributes=['pitch',
-                        'roll', 'heave', 'heading', 'latitude', 'longitude'])
-            else:
-                #  we have lat (and presumably lon) data so we just get the "regular" motion
-                #  data (pitch, roll, heave, heading)
-                p_data.set_motion(data_object.motion_data)
+                #  first add the NMEA data - This will add the position, speed, attitude,
+                #  and distance meta-types (see instruments.util.nmea_data for more info)
+                p.set_navigation(data_object.nmea_data)
 
-            #  apply heave correction if needed - this has no effect if heave
-            #  data is not available.
-            if heave_correct:
-                p_data.heave_correct()
-
-            #  get the bottom detection data. This method will automatically
-            #  correct depths as needed if the calibration sound speed is different
-            #  from the sound speed at the time of collection.
-            bottom_line = raw_obj.get_bottom(calibration=cal_obj, **kwargs)
-
-            if bottom_line is not None:
-                #  Bottom data is always recorded as depth with heave correction applied,
-                #  so we need to back out transducer Z offset and/or heave (if applicable)
-                #  when returning sample data with range as the vertical axis
-                v_axis = p_data.get_v_axis()[1]
-                if v_axis == 'range':
-                    #  the transducer_draft attribute of the bottom line contains both
-                    #  the z offset and heave. We simply subtract these values from the
-                    #  line data to get the line in range.
-                    bottom_line = bottom_line - bottom_line.transducer_draft
+                #  then add the motion data - we'll check if we have lat data from the NMEA
+                #  data and if not, try to get it from the motion data. Some EK80 configurations
+                #  may only store lat/lon in the motion data and not as NMEA data.
+                if not hasattr(p, 'latitude'):
+                    #  we didn't get lat/lon from the NMEA data so try to get it from motion data
+                    p.set_motion(data_object.motion_data, motion_attributes=['pitch',
+                            'roll', 'heave', 'heading', 'latitude', 'longitude'])
                 else:
-                    #  we're returning data as depth. We don't need to back out transducer
-                    #  z offset, but we have to back out heave correction if the user has
-                    #  not heave corrected the sample data
-                    if not heave_correct:
-                        #  heave correction is not set, subtract heave from the bottom line
-                        if hasattr(p_data,'heave'):
-                            bottom_line = bottom_line - p_data.heave
+                    #  we have lat (and presumably lon) data so we just get the "regular" motion
+                    #  data (pitch, roll, heave, heading)
+                    p.set_motion(data_object.motion_data)
 
-                #  add the bottom detection line to the processed data object
-                p_data.add_data_attribute('bottom_line', bottom_line)
+                #  apply heave correction if needed - this has no effect if heave
+                #  data is not available.
+                if heave_correct:
+                    p.heave_correct()
 
-            data[chan] = p_data
+                #  get the bottom detection data. This method will automatically
+                #  correct depths as needed if the calibration sound speed is different
+                #  from the sound speed at the time of collection.
+                bottom_line = raw_obj.get_bottom(calibration=cal_obj, **kwargs)
+
+                if bottom_line is not None:
+                    #  Bottom data is always recorded as depth with heave correction applied,
+                    #  so we need to back out transducer Z offset and/or heave (if applicable)
+                    #  when returning sample data with range as the vertical axis
+                    v_axis = p.get_v_axis()[1]
+                    if v_axis == 'range':
+                        #  the transducer_draft attribute of the bottom line contains both
+                        #  the z offset and heave. We simply subtract these values from the
+                        #  line data to get the line in range.
+                        bottom_line = bottom_line - bottom_line.transducer_draft
+                    else:
+                        #  we're returning data as depth. We don't need to back out transducer
+                        #  z offset, but we have to back out heave correction if the user has
+                        #  not heave corrected the sample data
+                        if not heave_correct:
+                            #  heave correction is not set, subtract heave from the bottom line
+                            if hasattr(p,'heave'):
+                                bottom_line = bottom_line - p.heave
+
+                    #  add the bottom detection line to the processed data object
+                    p.add_data_attribute('bottom_line', bottom_line)
+
+            #  unpack the temporary tuple we just created when adding the nav and motion data
+            if data_type == 'angles':
+                #  angles are supposed to be returned as a tuple so do nothing
+                data[chan] = p_data
+            else:
+                #  unpack power/Sv/Sp objects
+                data[chan] = p_data[0]
 
     return data
 

@@ -242,8 +242,6 @@ angle_cmap = get_cmap('plasma')
 
 # Now request angles data in time order.
 angles_along, angles_athwart = raw_data_38_1.get_physical_angles()
-print(angles_along)
-print(angles_athwart)
 
 # Create another axis.
 ax_1 = fig.add_subplot(2, 1, 1)

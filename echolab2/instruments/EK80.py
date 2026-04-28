@@ -4674,46 +4674,51 @@ class raw_data(ping_data):
             if np.any(heave_data['heave']):
                 p_data.add_data_attribute('heave', heave_data['heave'])
 
+            # replace the raw data with the new processed data object in the data_refs list
             data_refs[idx] = p_data
 
-            # Build and save the calibration parameters dictionary from what was provided
-            cal_parms = {'gain':None,
-                     'transmit_power':None,
-                     'equivalent_beam_angle':None,
-                     'pulse_duration':None,
-                     'absorption_coefficient':None,
-                     'sa_correction':None,
-                     'pulse_form':None,
-                     'angle_offset_alongship':None,
-                     'angle_offset_athwartship':None,
-                     'beam_width_alongship':None,
-                     'beam_width_athwartship':None,
-                     'transceiver_type': None,
-                     'channel_mode':self.channel_mode}
+        # By popular demand, we are inserting the calibration parameters used for
+        # transforming the sample data (and some other handy ones) into each
+        # processed data object. Assemble the dictionary here.
+        cal_parms = {'gain':None,
+                    'transmit_power':None,
+                    'equivalent_beam_angle':None,
+                    'pulse_duration':None,
+                    'absorption_coefficient':None,
+                    'sa_correction':None,
+                    'pulse_form':None,
+                    'angle_offset_alongship':None,
+                    'angle_offset_athwartship':None,
+                    'beam_width_alongship':None,
+                    'beam_width_athwartship':None,
+                    'transceiver_type': None,
+                    'channel_mode':self.channel_mode}
 
-            # Next, iterate through the dictionary, calling the method to extract
-            # the values for each parameter.
-            for key in cal_parms:
-                cal_parms[key] = calibration.get_parameter(self, key,
-                        return_indices)
+        # extract the params from the cal object
+        for key in cal_parms:
+            cal_parms[key] = calibration.get_parameter(self, key,
+                    return_indices)
+            
+        #  add sound speed
+        cal_parms['sound_speed'] = np.array([sound_velocity])
 
-            cal_parms['sound_speed'] = np.array([sound_velocity])
+        # For EK60 hardware use pulse duration when computing gains but for EK80
+        # hardware use effective pulse duration.
+        if self.transceiver_type == 'GPT':
+            effective_pulse_duration = cal_parms['pulse_duration']
+        else:
+            effective_pulse_duration = calibration.get_parameter(self,
+                'effective_pulse_duration', return_indices)
+        cal_parms['effective_pulse_duration'] = effective_pulse_duration
 
-            # For EK60 hardware use pulse duration when computing gains
-            # but for EK80 hardware use effective pulse duration.
-            if self.transceiver_type == 'GPT':
-                effective_pulse_duration = cal_parms['pulse_duration']
-            else:
-                effective_pulse_duration = calibration.get_parameter(self,
-                    'effective_pulse_duration', return_indices)
-            cal_parms['effective_pulse_duration'] = effective_pulse_duration
-
-
+        #  Add the calibration parameters dict to our processed data object(s)
+        for p_data in data_refs:
             p_data.add_object_attribute('cal_parms', cal_parms)
 
-            # Return the processed_data object containing the requested data.
-            data_refs.append(return_indices)
-            return data_refs
+        # Lastly, append the return_indices
+        data_refs.append(return_indices)
+
+        return data_refs
 
 
     def _get_transducer_offset(self, cal_parms):
