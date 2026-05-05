@@ -2,10 +2,12 @@
 '''get_rawfile_info.py reads the raw file passed as a command line argument
 and prints out a bunch of information about the raw file.
 
-While useful on its own, this example shows how to access the file and
-channel metadata within a raw file. See also echosounder.get_rawfile_info()
-which uses .idx files to efficiently return basic informaiton about the data
-in a rawfile.
+While useful on its own, this example is intended to show how to access the
+file and channel metadata within a raw file.
+
+If you want to do this programatically, see echosounder.get_rawfile_info()
+which uses .idx files to efficiently return information about the data in
+a rawfile in a dictionary.
 '''
 
 import os

@@ -4149,11 +4149,9 @@ class raw_data(ping_data):
         # processed_data object.
         if (hasattr(self, 'angles_alongship_e') and hasattr(self,
                 'angles_athwartship_e')) or hasattr(self, 'complex'):
-
             # Get the angle data
             alongship, athwartship, return_indices = self._get_sample_data('angles_e',
                     calibration=calibration, **kwargs)
-
         else:
             # We don't have complex nor electrical angle data required so
             # we can't do anything.
