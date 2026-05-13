@@ -434,66 +434,80 @@ def get_calibration_from_xml(data_object,xml_files,calibrations = None,
 
             # If there are multiple cals for the same channel, the variables from the calibration
             # results tree are averaged
+# If there are multiple cals for the same channel, the variables from the calibration
+            # results tree are averaged
             if (len(calibrations[chan]) > 1):
                 warnings.warn('Multiple calibrations for channel: ' + chan +
-                        ' ::: Calibration parameters will be averaged as appropriate.')
+                        ' ::: Calibration parameters will be interpolated and averaged across total bandwidth.')
 
                 # Create a new calibration object to store the merged calibration with the rest
                 # of the properties from the first calibration
                 merged_cal = calibrations[chan][0]
+                
+                # 1. Establish a master frequency grid representing the union of all bandwidths
+                all_freqs = []
+                for cal in calibrations[chan]:
+                    freq = cal.frequency
+                    if not isinstance(freq, np.ndarray):
+                        freq = np.array([freq])
+                    all_freqs.append(freq)
+                
+                merged_frequency = np.unique(np.concatenate(all_freqs))
 
                 # Loop through the calibration attributes that need to be averaged
                 for attr in ['gain', 'sa_correction', 'beam_width_alongship', 'beam_width_athwartship',
                         'angle_offset_alongship', 'angle_offset_athwartship']:
 
-                    merged_frequency,merged_val,full_frequencies,full_values = (np.array([]),np.array([]),
-                            np.array([]),np.array([]))
+                    # List to hold interpolated arrays for the current attribute
+                    interp_values = []
 
                     # For each calibration in the list for the channel...
                     for cal in calibrations[chan]:
 
                         # get the attribute as a function of frequency
-                        current_frequency, current_gain = cal.frequency, getattr(cal,attr)
+                        current_frequency, current_val = cal.frequency, getattr(cal, attr)
 
                         # If the frequency/attribute is not an array (CW data), make it an array
-
-                        if not isinstance(current_frequency,np.ndarray):
+                        if not isinstance(current_frequency, np.ndarray):
                             current_frequency = np.array([current_frequency])
 
-                        if not isinstance(current_gain,np.ndarray):
-                            current_gain = np.array([current_gain])
+                        if not isinstance(current_val, np.ndarray):
+                            current_val = np.array([current_val])
 
-                        # If the merged frequency array is empty, just add the current frequency array to it
-                        if merged_frequency.size==0:
-                            merged_frequency = current_frequency
-                        else:
-                            # otherwise append the current frequency array to the merged frequency array
-                            # and select only the unique values
-                            merged_frequency = np.unique(np.concatenate((merged_frequency,current_frequency),0))
+                        # 2. Interpolate, strictly assigning np.nan for out-of-bounds frequencies
+                        interp_val = np.interp(
+                            merged_frequency, 
+                            current_frequency, 
+                            current_val, 
+                            left=np.nan, 
+                            right=np.nan
+                        )
+                        interp_values.append(interp_val)
+                        
+                    # Convert to a 2D numpy array where each row represents one calibration file
+                    interp_values = np.array(interp_values)
 
-                        # Append the current frequency and attribute values to the all frequency and attribute arrays
-                        full_frequencies = np.append(full_frequencies,current_frequency)
-                        full_values = np.append(full_values,current_gain)
+                    # 3. Average the interpolated values. np.nanmean ignores NaNs, fulfilling the logic requirement.
+                    if attr in ['gain', 'sa_correction']:
+                        # Power mean in dB (Warning: ignore warnings about taking mean of all-NaN slices)
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore", category=RuntimeWarning)
+                            linear_mean = np.nanmean(10 ** (interp_values / 10.0), axis=0)
+                            merged_val = 10 * np.log10(linear_mean)
+                    else: 
+                        # Linear mean for other attributes
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore", category=RuntimeWarning)
+                            merged_val = np.nanmean(interp_values, axis=0)
 
-                    # For each frequency in the new merged frequency array, calculate the mean of the attribute
-                    # values that exist at that frequency For the gain and sa_correction attributes, calculate
-                    # the power mean in dB
-                    if attr in['gain','sa_correction']:
-                        for f in merged_frequency:
-                            merged_val = np.append(merged_val,10*np.log10(np.nanmean(10**(np.array(np.where(
-                                    full_frequencies==f,full_values,np.nan))/10))))
-                    else: # For the other attributes, calculate the linear mean
-                        for f in merged_frequency:
-                            merged_val = np.append(merged_val,np.nanmean((np.where(full_frequencies==f,
-                                    full_values,np.nan))))
-
-                    if len(merged_val)==1:
-                        merged_val=merged_val[0]
+                    if len(merged_val) == 1:
+                        merged_val = merged_val[0]
+                        
                     # Set the merged attribute values to the merged calibration object
-                    merged_cal.__setattr__(attr,merged_val)
+                    merged_cal.__setattr__(attr, merged_val)
 
-                if len(merged_frequency)>1:
-                    merged_cal.__setattr__('frequency',merged_frequency)
+                if len(merged_frequency) > 1:
+                    merged_cal.__setattr__('frequency', merged_frequency)
 
                 # Assign the merged calibration to the channel in the calibrations dictionary
                 calibrations[chan] = merged_cal
