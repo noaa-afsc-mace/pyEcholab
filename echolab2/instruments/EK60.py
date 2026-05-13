@@ -365,7 +365,7 @@ class EK60(object):
                 channel_ids=None, time_format_string='%Y-%m-%d %H:%M:%S',
                 incremental=None, start_sample=None, end_sample=None,
                 progress_callback=None, callback_ref=None, read_times=None,
-                read_pings=None, complex=None):
+                read_pings=None, complex=None, motion=None):
 
         """Reads one or more Simrad Ex60/ES70/ME70 .raw files and appends the data to any
         existing data. The data are ordered as read.
@@ -373,11 +373,16 @@ class EK60(object):
         Args:
             raw_files (list): List containing full paths to data files to be
                 read.
-            power (bool): Controls whether power data is stored
-            angles (bool): Controls whether angle data is stored
+            power (bool): Set to True to read power data. When set to False,
+                power data is not stored. Default: True
+            angles (bool): Set to True to read angle data. When set to False,
+                power data is not stored. Default: True
             complex (bool): EK60 format raw files do not store complex. This
                 keyword exists for API compatibility and is ignored.
-            nmea (bool): Controls whether NMEA data is stored
+            nmea (bool): Set to True to store NMEA data. When set to False,
+                they are skipped. Default: True
+            motion (bool): This keyword has no effect and is here for API
+                compatibility.
             max_sample_count (int): Specify the max sample count to read
                 if your data of interest is less than the total number of
                 samples contained in the instrument files.
@@ -467,6 +472,13 @@ class EK60(object):
         if channel_ids:
             self.read_channel_ids = channel_ids
 
+        #  check if we're reading *any* sample data
+        if not (self.store_power or self.store_angles):
+            #  we're not, so set the raw argument to false in the calls to _read_datagram
+            read_raw = False
+        else:
+            read_raw = True
+
         # Ensure that the raw_files argument is a list.
         if isinstance(raw_files, str):
             raw_files = [raw_files]
@@ -537,7 +549,7 @@ class EK60(object):
             #  and read datagrams until we're done
             while not finished:
                 #  read a datagram - method returns some basic info
-                dg_info = self._read_datagram(fid, nmea=nmea)
+                dg_info = self._read_datagram(fid, nmea=nmea, raw=read_raw)
 
                 #  call progress callback if supplied
                 if (progress_callback):
@@ -685,7 +697,7 @@ class EK60(object):
         return config_datagram
 
 
-    def _read_datagram(self, fid, nmea=True):
+    def _read_datagram(self, fid, nmea=True, raw=True):
         """Reads the next raw file datagram
 
         This method reads the next datagram from the file, storing the
@@ -807,13 +819,36 @@ class EK60(object):
                 #  field in our return dict and return
                 result['finished'] = True
                 return result
+            
+        # Update the end_time property.
+        if self.end_time is not None:
+            # We can't assume data will be read in time order.
+            if self.end_time < dgram_header['timestamp']:
+                self.end_time = dgram_header['timestamp']
+        else:
+            self.end_time = dgram_header['timestamp']
 
-        # If we're here, we're reading the datagram. First, check if we need
-        # to increment our read pings counter (n_pings).
+        # Check if we need to increment our read pings counter (n_pings).
         if new_ping:
-            # Yes, this is a new ping, and since we're here, we're reading it,
-            # so increment the read pings counter.
+            # Yes, this is a new ping so increment the read pings counter.
             self.n_pings += 1
+
+        # lastly - check if we're reading RAW datagrams. If not, we bail here, after
+        # accounting for the ping group.
+        if not raw and dgram_header['type'].startswith('RAW'):
+            
+            #  Since we're not reading any data, we have to handle some basic stats here
+            if not self.start_time:
+                self.start_time = dgram_header['timestamp']
+            if not self.start_ping:
+                self.start_ping = self._file_n_pings
+            self.end_ping = self._file_n_pings
+
+            # This is a RAW datagram and we're skipping them
+            # so we skip the rest of the datagram and return
+            fid.skip(header=dgram_header)
+            return result
+
         # Now finish reading the datagram. Calling read while passing the header will
         # result in re-parsing the header values so replace the timestamp with the 
         # previously parsed and converted value.
@@ -827,13 +862,7 @@ class EK60(object):
             result['finished'] = True
             return result
 
-        # Update the end_time property.
-        if self.end_time is not None:
-            # We can't assume data will be read in time order.
-            if self.end_time < new_datagram['timestamp']:
-                self.end_time = new_datagram['timestamp']
-        else:
-            self.end_time = new_datagram['timestamp']
+        
 
         # Process and store the datagrams by type.
 

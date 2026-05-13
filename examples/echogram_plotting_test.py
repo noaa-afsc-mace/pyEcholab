@@ -2,7 +2,7 @@
 """echogram_plotting_test.py checks the matplotlib based echogram class.
 
 It is primarily intended to test the processed_data and echogram classes. As
-configured, this will plot a 60 pings x 100 samples array with samples that
+configured, this will plot a 60 pings x 101 samples array with samples that
 are 0.5 m thick. Ping times will be jittered to simulate real data. A grid
 will then be plotted on top of the samples.
 

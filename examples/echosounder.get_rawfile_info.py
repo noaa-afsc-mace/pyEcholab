@@ -6,15 +6,15 @@ echosounder.get_rawfile_info attempts to quickly extract the bulk of the
 available raw file metadata. It does this by reading the configuration header
 and, if available, the .idx file, to determine ping span, time span, channels,
 and a host of transceiver and transducer parameters organized by channel ID.
-If an .idx file is not available, it will resort to reading the whole file
-which will be slower.
+If an .idx file is not available, it will resort to scanning the whole file
+which will be a bit slower.
 
 The amount of metadata between EK60 and EK80 files varies a lot. The EK80
-file formats contain a lot more and the format has evolved to add more so
+file formats contain a lot more and the format has evolved over time so
 many fields may be empty depending on the raw file verion you read.
 
-Since it (usually) doesn't read the entire raw file, it does not return 
-information about NMEA or motion datagrams. If you need this, See the example
+Since it doesn't actually read the raw file, it does not return information
+about NMEA or motion datagrams. If you need this, See the example
 get_rawfile_info.py for an, er, example of extracting this information.
 
 '''
@@ -22,18 +22,16 @@ get_rawfile_info.py for an, er, example of extracting this information.
 from echolab2.instruments import echosounder
 
 
-
-
-raw_file = './data/EK80/cwfm/DY2602/raw/DY2602-D20260310-T191652.raw'
-
-
+#raw_file = './data/EK80/cwfm/DY2602/raw/DY2602-D20260310-T191652.raw'
+raw_file = './data/EK60/DY1603/raw/DY1603_EK60-D20160308-T115724.raw'
 
 #  read the raw file
 file_info = echosounder.get_rawfile_info(raw_file)
 
+# convert the size in bytes to MiB
 size_mib = file_info['raw_file_size_bytes'] / 1024. / 1024.
-n_channels = len(file_info['channels'])
 
+# Print out the results
 print()
 print(f"echosounder_get_rawfile_info.py")
 print()
@@ -51,7 +49,7 @@ print(f"                First ping time: {file_info['start_time']}")
 print(f"                 Last ping time: {file_info['end_time']}")
 print(f"                      File size: {size_mib:.2f} MiB")
 print()
-print(f"             Number of channels: {n_channels}")
+print(f"             Number of channels: {len(file_info['channels'])}")
 print()
 
 for chan in file_info['channels']:
@@ -62,12 +60,22 @@ for chan in file_info['channels']:
     print(f"                   Transceiver type: {file_info['configuration'][chan]['transceiver_type']}")
     print(f"                   Transceiver name: {file_info['configuration'][chan]['transceiver_name']}")
     print(f"          Transceiver serial number: {file_info['configuration'][chan]['serial_number']}")
+    print(f"                         Pulse form: {file_info['configuration'][chan]['pulse_form']}")
+    print(f"                       Channel mode: {file_info['configuration'][chan]['channel_mode']}")
+    if 'frequency' in file_info['configuration'][chan]:
+        print(f"                     Frequency (Hz): {file_info['configuration'][chan]['frequency']}")
+    elif 'start_frequency' in file_info['configuration'][chan]:
+        print(f"               Start frequency (Hz): {file_info['configuration'][chan]['start_frequency']}")
+        print(f"                 End frequency (Hz): {file_info['configuration'][chan]['end_frequency']}")    
+    print(f"                 Pulse duration (s): {file_info['configuration'][chan]['pulse_duration']}")
+    print(f"                Sample interval (s): {file_info['configuration'][chan]['sample_interval']}")
+    print(f"                 Transmit power (W): {file_info['configuration'][chan]['transmit_power']}")
+    print(f"                              Slope: {file_info['configuration'][chan]['slope']}")
+    print(f"               Sound velocity (m/s): {file_info['configuration'][chan]['sound_velocity']}")
     print(f"                     Market segment: {file_info['configuration'][chan]['market_segment']}")
     print(f"               Multiplexing enabled: {file_info['configuration'][chan]['multiplexing']}")
     print(f"             Transceiver IP address: {file_info['configuration'][chan]['ip_address']}")
     print(f"                   Ethernet address: {file_info['configuration'][chan]['ethernet_address']}")
-    print(f"                         Pulse form: {file_info['configuration'][chan]['pulse_form']}")
-    print(f"                       Channel mode: {file_info['configuration'][chan]['channel_mode']}")
     print(f"              Transceiver impedance: {file_info['configuration'][chan]['impedance']}")
     print(f"           Rx sample frequency (Hz): {file_info['configuration'][chan]['rx_sample_frequency']}")
     print(f"     Hardware channel configuration: {file_info['configuration'][chan]['hw_channel_configuration']}")
@@ -91,6 +99,5 @@ for chan in file_info['channels']:
     print(f"                 Transducer alpha X: {file_info['configuration'][chan]['transducer']['transducer_alpha_x']}")
     print(f"                 Transducer alpha Y: {file_info['configuration'][chan]['transducer']['transducer_alpha_y']}")
     print(f"                 Transducer alpha Z: {file_info['configuration'][chan]['transducer']['transducer_alpha_z']}")
-    print()
 
 print()

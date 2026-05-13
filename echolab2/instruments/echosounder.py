@@ -1157,6 +1157,8 @@ def get_rawfile_info(file, force_full_read=False):
 
     A dictionary is returned containg the following keys:
 
+        File Attributes:
+
         raw_file_name - the name of the raw file
         idx_file_name - the name of the idx file (None if no idx file exists)
         raw_file_size_bytes - the size of the raw file in bytes
@@ -1179,17 +1181,23 @@ def get_rawfile_info(file, force_full_read=False):
             'Normal', 'Replay', 'Sequence'
         time_bias - Not sure what this is but would guess it is some global time bias applied to
             all data in the file? Not sure what the units are. I have only seen values of 0.
-        configuration - a dict, keyed by channel ID, that contains the channel's
-            configuration parameters recorded when the raw file was created. Each channel
-            will have the following keys:
 
-                pulse_form - 'CW' or 'FM'
-                channel_mode - 'Passive' or 'Active'
-                transceiver_name - The name of the transceiver hardware.
+        Channel Attributes:
+            
+        configuration - a dict, keyed by channel ID, that contains the channel's
+            configuration parameters. Each channel will have the following keys:
+
+                transceiver_name - The name of the transceiver hardware which is comprised
+                    of the transeciver type and serial number. This will be unique for all
+                    transceivers.
+                transceiver_type - The class of transceiver hardware:
                     GPT, WBT, WBT MINI, WBT TUBE, WBT HP, WBT LF, WBAT, SBT, ...
-                ip_address - The IP address of the transceiver when the data were recorded.
-                market_segment - 'scientific' or 'commercial' (?)
                 serial_number - the transceiver serial number.
+                channel_id - The string that uniquely identifies the channel, usually comprised
+                    of the hardware type, serial number, maybe some multiplexing info, and
+                    transducer name.
+                channel_id_short - 
+                market_segment - 'scientific' or 'commercial' (?)
                 impedance - the transceiver impedance. This attribute was added in later EK80
                     file formats. If missing, it defaults to 1000 ohms which may or may not
                     be correct depending on the manufacture date of your hardware. Early WBTs
@@ -1198,65 +1206,74 @@ def get_rawfile_info(file, force_full_read=False):
                     file or if data files exist where the xcvr impedance is 5400 but the data
                     files still lack the impedance information.
                 multiplexing - 0 and I assume 1? 0 is not multiplexing
-                rx_sample_frequency
-                transceiver_type
+                rx_sample_frequency - The sampling frrequency of the Rx ADC
+                ip_address - The IP address of the transceiver when the data were recorded.
                 ethernet_address - The MAC address of the transceiver
-                transceiver_software_version
-                transceiver_number - The number indicating the order the transceiver was added
-                    to the system, starting at 1. This is not the same as the EK60 channel number
-                    which increases with each channel. This number is tied to the physical
-                    hardware and EK80 channels that share a transceiver will have the same
-                    transceiver number.
-                channel_id - The string that uniquely identifies the channel, usually comprised
-                    of the hardware type, serial number
-                channel_id_short
-                max_tx_power_transceiver
-                hw_channel_configuration
-                pulse_duration - A list containing the pulse_duration lookup vector for CW
-                pulse_duration_fm - A list containing the pulse_duration lookup vector for FM
-                gain - A list containing the gain table. The gain is indexed by the pulse_duration.
-                sa_correction - A list containing the Sa correction table. The Sa is indexed by
-                    the pulse_duration.
-                equivalent_beam_angle
-                directivity_drop_at_2x_beam_width
-                angle_sensitivity_alongship
-                angle_sensitivity_athwartship
-                angle_offset_alongship
-                angle_offset_athwartship
-                beam_width_alongship
-                beam_width_athwartship
-                fpga_tx_firmware_ver
-                fpga_rx_firmware_ver
+                transceiver_software_version - The firmware version running on the transceiver
+                fpga_tx_firmware_ver - The FPGA firmware version for the Tx DSP subsystem
+                fpga_rx_firmware_ver - The FPGA firmware version for the Rx DSP subsystem
+                transceiver_number - For EK80 files, the number indicating the order the transceiver
+                    was added to the system (?), starting at 1. This number is tied to the
+                    physical hardware and EK80 channels that share a transceiver will have the
+                    same transceiver number. For EK60 files, this is really the channel number
+                    which starts at 1 and increments for each configured channel. This is not
+                    tied to the hardware. When multiplexing with the EK60, each MUX channel
+                    (same GPT) will have a different channel number.
+                max_tx_power_transceiver - The maximum power in watts the 
+                hw_channel_configuration - A number representing the hardware configuration.
+                    I do not have any info on this.
+
+                The following attributes are extracted from the initial parameters datagram from
+                an EK80 file or from the first ping ensemble in a EK60 file. They may not represent
+                the values throught the file.
+
+                channel_mode - 'active' or 'passive'
+                pulse_form - CW or FM
+                pulse_duration - The pulse duration for the first ping 
+                frequency - CW channels only - the frequency of the Tx pulse
+                frequency_start - FM channels only - the starting frequency of the Tx pulse 
+                frequency_end - FM channels only - the starting frequency of the Tx pulse 
+                pulse_duration - The duration of the Tx pulse in seconds
+                sample_interval - The duration of the Rx sampling interval in seconds.
+                transmit_power - The power in watts of the Tx signal
+                slope - EK80 only - The slope of the Tx signal
+                sound_velocity - The sound velocity in m/s
+
                 transducer - a dict containing this channel's transducer information. It contains
                     the following keys:
 
                     transducer_name
                     transducer_serial_number
-                    transducer_frequency
-                    transducer_frequency_minimum
-                    transducer_frequency_maximum
-                    max_tx_power_transducer
+                    transducer_frequency - The transducer's center frequency
+                    transducer_frequency_minimum - The transducer's minimum recommended Tx frequency
+                    transducer_frequency_maximum - The transducer's maximum recommended Tx frequency
+                    max_tx_power_transducer - The transducer's maximum recommened Tx power rating
                     transducer_beam_type - A list containing he transducer beam type as an integer as
                         written in the data file and as a string interpreted from that. I do not have
                         an official list from Simrad/Kongsberg to map the number to a name, but have
                         gathered what I can from the documenation.
                     transducer_custom_name
-                    transducer_mounting - 'Drop Keel', '
+                    transducer_mounting - 'Drop Keel', 'Hull Mounted', ...
                     transducer_orientation
-                    transducer_offset_x
-                    transducer_offset_y
-                    transducer_offset_z
-                    transducer_alpha_x
-                    transducer_alpha_y'
-                    transducer_alpha_z'
+                    transducer_offset_x - athwartship (?) transducer offset from the GPS antenna
+                    transducer_offset_y - alongship (?) transducer offset from the GPS antenna
+                    transducer_offset_z - vertical (?) transducer offset from the GPS antenna
+                    transducer_alpha_x - transducer rotation around the athwartship axis (?)
+                    transducer_alpha_y - transducer rotation around the alongship axis (?)
+                    transducer_alpha_z - transducer rotation around the vertical axis (?)
 
     '''
 
+    #  Define lists containing the EK80 configuration fields to extract. Also create dicts
+    #  to map EK60 params to the EK80 fields.
     EK80_FILE_CONFIG_FIELDS = ['application_name',
                                'application_version',
                                'file_format_version',
                                'ping_mode',
                                'time_bias']
+
+    EK60_FILE_CONFIG_MAP = {'application_name':'sounder_name',
+                            'application_version':'version'}
 
     EK80_XCVR_CONFIG_FIELDS = ['transceiver_name',
                                'ip_address',
@@ -1272,20 +1289,22 @@ def get_rawfile_info(file, force_full_read=False):
                                'channel_id',
                                'channel_id_short',
                                'max_tx_power_transceiver',
-                               'hw_channel_configuration',
-                               'pulse_duration',
-                               'pulse_duration_fm',
-                               'gain',
-                               'sa_correction',
-                               'equivalent_beam_angle',
-                               'directivity_drop_at_2x_beam_width',
-                               'angle_sensitivity_alongship',
-                               'angle_sensitivity_athwartship',
-                               'angle_offset_alongship',
-                               'angle_offset_athwartship',
-                               'beam_width_alongship',
-                               'beam_width_athwartship']
+                               'hw_channel_configuration']
     
+    EK60_XCVR_CONFIG_MAP = {'channel_id':'channel_id',
+                            'transceiver_software_version':'gpt_software_version'}
+    
+    EK80_INITIAL_PARAM_FIELDS = ['channel_mode',
+                                 'pulse_form',
+                                 'frequency',
+                                 'frequency_start',
+                                 'frequency_end',
+                                 'pulse_duration',
+                                 'sample_interval',
+                                 'transmit_power',
+                                 'slope',
+                                 'sound_velocity']
+
     EK80_XDCR_CONFIG_FIELDS = ['transducer_name',
                                'transducer_serial_number',
                                'transducer_frequency',
@@ -1302,6 +1321,17 @@ def get_rawfile_info(file, force_full_read=False):
                                'transducer_alpha_x',
                                'transducer_alpha_y',
                                'transducer_alpha_z']
+    
+    EK60_XDCR_CONFIG_MAP = {'transducer_frequency':'frequency',
+                            'transducer_frequency_minimum':'frequency',
+                            'transducer_frequency_maximum':'frequency',
+                            'transducer_beam_type':'beam_type',
+                            'transducer_offset_x':'pos_x',
+                            'transducer_offset_y':'pos_y',
+                            'transducer_offset_z':'pos_z',
+                            'transducer_alpha_x':'dir_x',
+                            'transducer_alpha_y':'dir_y',
+                            'transducer_alpha_z':'dir_z'}
 
     
     #  normalize the input file path
@@ -1346,219 +1376,294 @@ def get_rawfile_info(file, force_full_read=False):
 
     # Get info on this file - if an idx file is available, we use that
     if has_idx:
-        #  read the idx file to get the time and ping span
-        idx_data = data_object.read_idx(idx_file)
-        pings = list(idx_data.keys())
-        file_info['start_time'] = idx_data[pings[0]]['timestamp']
-        file_info['end_time'] = idx_data[pings[-1]]['timestamp']
-        file_info['start_ping'] = pings[0]
-        file_info['end_ping'] = pings[-1]
-        file_info['n_pings'] = pings[-1] - pings[0]
-
-        # next, read the rawfile header to extract info about the channels
         try:
-            fid = RawSimradFile(filename, 'r')
+            #  read the idx file to get the time and ping span
+            idx_data = data_object.read_idx(idx_file)
+            pings = list(idx_data.keys())
+            file_info['start_time'] = idx_data[pings[0]]['timestamp']
+            file_info['end_time'] = idx_data[pings[-1]]['timestamp']
+            file_info['start_ping'] = pings[0]
+            file_info['end_ping'] = pings[-1]
+            file_info['n_pings'] = pings[-1] - pings[0]
         except:
-            raise IOError('Unable to open raw file ' + filename + ' for reading.')
-
-        # read the config header
-        header = fid.read(1)
+            # That didn't work - we'll just act like we don't have an idx file
+            has_idx = False
         
-        if data_type == SIMRAD_EK80:
-            # The newer raw format of the EK80 and related systems has an XML based header
-            # with significantly more information than the EK60 style raw file and it has
-            # the "initialparameter" datagram that provides info about some of the initial
-            # channel settings. Use data from both to construct the return data
+    # next, read the rawfile header to extract info about the channels
+    try:
+        fid = RawSimradFile(filename, 'r')
+    except:
+        raise IOError('Unable to open raw file ' + filename + ' for reading.')
 
-            # Sanity check - if the header is not a configuration datagram, bail.
-            if 'configuration' not in header:
-                raise IOError('Unknown EK80 file format. Configuration header not found!')
+    # read the config header which is always the first datagram in the rawfile
+    header = fid.read(1)
+    
+    if data_type == SIMRAD_EK80:
+        # The newer raw format of the EK80 and related systems has an XML based header
+        # with significantly more information than the EK60 style raw file and it has
+        # the "initialparameter" datagram that provides info about some of the initial
+        # channel settings. Use data from both to construct the return data.
 
-            # Get the channels and create the configuration dictionary
-            file_info['channels'] = list(header['configuration'].keys())
-            file_info['configuration'] = {}
+        # Sanity check - if the header is not a configuration datagram, bail.
+        if 'configuration' not in header:
+            raise IOError('Unknown EK80 file format. Configuration header not found!')
 
-            # Set the application_name entry to None to indicate the file level attributes
-            # have not been populated
-            file_info['application_name'] = None
+        # Get the channels and create the configuration dictionary
+        file_info['channels'] = list(header['configuration'].keys())
+        file_info['configuration'] = {}
 
-            # loop thru the channels to extract attributes for each channel
-            for chan in file_info['channels']:
-                #  create the configuration dict for this channel
-                file_info['configuration'][chan] = {}
+        # Set the application_name entry to None to indicate the file level attributes
+        # have not been populated
+        file_info['application_name'] = None
 
-                # Check if we have parsed the attributes that are common across channels
-                if file_info['application_name'] == None:
-                    # No, this must be the first channel we're parsing. Do the common attributes.
-                    for field in EK80_FILE_CONFIG_FIELDS:
-                        try:
-                            file_info[field] = header['configuration'][chan][field]
-                        except:
-                            file_info[field] = 'Unavailable'
+        # loop thru the channels to extract attributes for each channel
+        for chan in file_info['channels']:
+            #  create the configuration dict for this channel
+            file_info['configuration'][chan] = {}
 
-                # Add the transceiver configuration fields
-                for field in EK80_XCVR_CONFIG_FIELDS:
+            # Check if we have parsed the attributes that are common across channels
+            if file_info['application_name'] == None:
+                # No, this must be the first channel we're parsing. Do the common attributes.
+                for field in EK80_FILE_CONFIG_FIELDS:
                     try:
-                        file_info['configuration'][chan][field] = header['configuration'][chan][field]
+                        file_info[field] = header['configuration'][chan][field]
                     except:
-                        if field == 'impedance':
-                            # set the impedance to 1000 if the attribute is missing from the file
-                            file_info['configuration'][chan][field] = 1000
-                        else:
-                            file_info['configuration'][chan][field] = 'Unavailable'
+                        file_info[field] = None
 
-                #  get the FPGA firmware versions
+            # Add the transceiver configuration fields
+            for field in EK80_XCVR_CONFIG_FIELDS:
                 try:
-                    xcvr_version_info = header['configuration'][chan]['transceiver_version'].split('\r\n')
-                    try:
-                        file_info['configuration'][chan]['fpga_tx_firmware_ver'] = xcvr_version_info[8].split(":")[1].strip()
-                    except:
-                        file_info['configuration'][chan]['fpga_tx_firmware_ver'] = 'Unable to parse'
-                    try:
-                        file_info['configuration'][chan]['fpga_rx_firmware_ver'] = xcvr_version_info[9].split(":")[1].strip()
-                    except:
-                        file_info['configuration'][chan]['fpga_rx_firmware_ver'] = 'Unable to parse'
+                    file_info['configuration'][chan][field] = header['configuration'][chan][field]
                 except:
-                    file_info['configuration'][chan]['fpga_tx_firmware_ver'] = 'Unavailable'
-                    file_info['configuration'][chan]['fpga_rx_firmware_ver'] = 'Unavailable'
+                    if field == 'impedance':
+                        # set the impedance to 1000 if the attribute is missing from the file
+                        file_info['configuration'][chan][field] = 1000
+                    else:
+                        file_info['configuration'][chan][field] = None
 
-                # Add the transducer information
-                file_info['configuration'][chan]['transducer'] = {}
-                for field in EK80_XDCR_CONFIG_FIELDS:
-                    try:
-                        if field == 'transducer_beam_type':
-                            # Add the beam type name as we know it to the numerical type
-                            beam_type = header['configuration'][chan][field]
-                            # set the name based on the type
-                            if beam_type == 0:
-                                type_name = 'Single Beam : 1 sector'
-                            elif beam_type == 1:
-                                type_name = 'Split Beam : 4 sector'
-                            elif beam_type == 17:
-                                type_name = 'Split Beam : 3 sector'
-                            elif beam_type in [49,65,81]:
-                                type_name = 'Split Beam : 3 sector with center element'
-                            else:
-                                type_name = 'Split Beam : Unknown sector configuration.'
-                                
-                            file_info['configuration'][chan]['transducer'][field] = [beam_type, type_name]
+            #  get the FPGA firmware versions
+            try:
+                xcvr_version_info = header['configuration'][chan]['transceiver_version'].split('\r\n')
+                try:
+                    file_info['configuration'][chan]['fpga_tx_firmware_ver'] = xcvr_version_info[8].split(":")[1].strip()
+                except:
+                    file_info['configuration'][chan]['fpga_tx_firmware_ver'] = 'Unable to parse'
+                try:
+                    file_info['configuration'][chan]['fpga_rx_firmware_ver'] = xcvr_version_info[9].split(":")[1].strip()
+                except:
+                    file_info['configuration'][chan]['fpga_rx_firmware_ver'] = 'Unable to parse'
+            except:
+                file_info['configuration'][chan]['fpga_tx_firmware_ver'] = None
+                file_info['configuration'][chan]['fpga_rx_firmware_ver'] = None
+
+            # Add the transducer information
+            file_info['configuration'][chan]['transducer'] = {}
+            for field in EK80_XDCR_CONFIG_FIELDS:
+                try:
+                    if field == 'transducer_beam_type':
+                        # Add the beam type name as we know it to the numerical type
+                        beam_type = header['configuration'][chan][field]
+                        # set the name based on the type
+                        if beam_type == 0:
+                            type_name = 'Single Beam : 1 sector'
+                        elif beam_type == 1:
+                            type_name = 'Split Beam : 4 sector'
+                        elif beam_type == 17:
+                            type_name = 'Split Beam : 3 sector'
+                        elif beam_type in [49,65,81]:
+                            type_name = 'Split Beam : 3 sector with center element'
                         else:
-                            file_info['configuration'][chan]['transducer'][field] = header['configuration'][chan][field]
-                    except:
-                        file_info['configuration'][chan]['transducer'][field] = 'Unavailable'
+                            type_name = 'Split Beam : Unknown sector configuration.'
+                            
+                        file_info['configuration'][chan]['transducer'][field] = [beam_type, type_name]
+                    else:
+                        file_info['configuration'][chan]['transducer'][field] = header['configuration'][chan][field]
+                except:
+                    file_info['configuration'][chan]['transducer'][field] = None
 
-            # Now read the initialparameters datagram to get pulse form and channel mode for
-            # each channel. I don't think this datagram is available in all EK80 raw file
-            # versions and I'm not sure if this is always the 2nd datagram so we'll fish
-            # thru the first handful looking for it.
-            for i in range(10):
-                initial_param = fid.read(1)
-                if initial_param['subtype'] == 'initialparameter':
-                    # this *is* the droid we're looking for
-                    break
-
-            #  make sure we have an initial parameter datagram
+        # Now read the initialparameters datagram to get pulse form and channel mode for
+        # each channel. I don't think this datagram is available in all EK80 raw file
+        # versions and I'm not sure if this is always the 2nd datagram so we'll fish
+        # thru the first handful looking for it.
+        for i in range(10):
+            initial_param = fid.read(1)
             if initial_param['subtype'] == 'initialparameter':
-                # Work through the channels in the file and add the pulse form and channel mode
-                for chan in initial_param['initialparameter']:
-                    # convert pulse form and channel mode into human readable values
-                    try:
-                        if initial_param['initialparameter'][chan]['pulse_form'] == 1:
-                            file_info['configuration'][chan]['pulse_form'] = 'FM'
-                        else:
-                            file_info['configuration'][chan]['pulse_form'] = 'CW'
-                    except:
-                        file_info['configuration'][chan]['pulse_form'] = 'Unavailable'
-                    try:
-                        if initial_param['initialparameter'][chan]['channel_mode'] == 1:
-                            file_info['configuration'][chan]['channel_mode'] = 'passive'
-                        else:
-                            file_info['configuration'][chan]['channel_mode'] = 'active'
-                    except:
-                        file_info['configuration'][chan]['channel_mode'] = 'Unavailable'
+                # this *is* the droid we're looking for
+                break
 
-            else:
-                # Couldn't find the initial parameter datagram
-                file_info['configuration'][chan]['pulse_form'] = 'Unavailable'
-                file_info['configuration'][chan]['channel_mode'] = 'Unavailable'
+        #  make sure we have an initial parameter datagram
+        if initial_param['subtype'] == 'initialparameter':
+            # We do, work through the channels and unpack the initial parameters values
+            # Along the way, we convert pulse_form and channel_mode to human readable forms
+            for chan in initial_param['initialparameter']:
+                for field in EK80_INITIAL_PARAM_FIELDS:
+                    try:
+                        # pulse_form is converted to a string
+                        if field == 'pulse_form':
+                            if initial_param['initialparameter'][chan][field] == 1:
+                                file_info['configuration'][chan][field] = 'FM'
+                            else:
+                                file_info['configuration'][chan][field] = 'CW'
+
+                        # same with channel_mode
+                        elif field == 'channel_mode':
+                            if initial_param['initialparameter'][chan][field] == 1:
+                                file_info['configuration'][chan][field] = 'passive'
+                            else:
+                                file_info['configuration'][chan][field] = 'active'
+
+                        # this value doesn't need any conversion
+                        else:
+                            if field in initial_param['initialparameter'][chan]:
+                                file_info['configuration'][chan][field] = \
+                                        initial_param['initialparameter'][chan][field]
+                    except:
+                        # This field isn't in the datagram
+                        file_info['configuration'][chan][field] = None
 
         else:
-            # The older EK60 raw format does not have the initialparameter datagram
-            # so we will use the header and fish thru the first RAW0 datagrams and grab
-            # similar info as is contained in the initialparameter datagram
-
-            # build our return dict
-            file_info['channels'] = list(header['configuration'].keys())
-            file_info['configuration']= dict.fromkeys(header['configuration'], {})
-
-            # channels are mapped by numbers in RAW0 datagrams so build a nummber to ID map.
-            # We will also take what we can from the header
-            chan_num_map = {}
-            for chan_num, chan in enumerate(header['configuration'], start=1):
-                chan_num_map[chan_num] = chan
-                file_info['configuration'][chan]['pulse_form'] = 'CW'
-                file_info['configuration'][chan]['slope'] = None
-                file_info['configuration'][chan]['frequency'] = header['configuration'][chan]['frequency']
-                file_info['configuration'][chan]['channel_id'] = chan
-
-            # Now read ahead looking for the first RAW0 datagram for each channel to
-            # extract the remaining params from the RAW dataagrams.
-            read_all_chans = [False] * len(file_info['channels'])
-            while not np.all(read_all_chans):
-                dgram = fid.read(1)
-                if dgram['type'] == 'RAW0':
-                    # channels are mapped by number in RAM0 datagrams so map that back to our channel ID
-                    chan = chan_num_map[dgram['channel']]
-                    # populate the rest of the initial_parameters for this channel
-                    if dgram['transmit_mode'] == 1:
-                        file_info['configuration'][chan]['channel_mode'] = 'passive'
-                    else:
-                        file_info['configuration'][chan]['channel_mode'] = 'active'
-                    file_info['configuration'][chan]['pulse_duration'] = dgram['pulse_length']
-                    file_info['configuration'][chan]['sample_interval'] = dgram['sample_interval']
-                    file_info['configuration'][chan]['transmit_power'] = dgram['transmit_power']
-                    file_info['configuration'][chan]['sound_velocity'] = dgram['sound_velocity']
-
-                    # indicate that we have read the RAW datagram for this channel
-                    read_all_chans[dgram['channel'] - 1] = True
-
-        #  close the idx file
-        fid.close()
+            # Couldn't find the initial parameter datagram
+            file_info['configuration'][chan]['pulse_form'] = None
+            file_info['configuration'][chan]['channel_mode'] = None
 
     else:
+        # The older EK60 raw format has a simpler configuraiton datagram and does not
+        # have the initialparameter datagram. We'll fish thru the first RAW0 datagrams and
+        # grab similar info as is contained in the initialparameter datagram
+
+        # Sanity check - if the header is not a configuration datagram, bail.
+        if 'configuration' not in header:
+            raise IOError('Unknown EK60 file format. Configuration header not found!')
+
+        # Get the channels and create the configuration dictionary
+        file_info['channels'] = list(header['configuration'].keys())
+        file_info['configuration'] = {}
+
+        # Set the application_name entry to None to indicate the file level attributes
+        # have not been populated
+        file_info['application_name'] = None
+
+        #  create a dict to map channel number to channel ID - needed for EK60
+        chan_num_map = {}
+        chan_map_number = 1
+
+        # loop thru the channels to extract configuration attributes for each channel
+        for chan in file_info['channels']:
+            #  create the configuration dict for this channel
+            file_info['configuration'][chan] = {}
+
+            # add this channel to the channel map
+            chan_num_map[chan_map_number] = chan
+            chan_map_number += 1
+
+            # Check if we have parsed the attributes that are common across channels
+            if file_info['application_name'] == None:
+                # No, this must be the first channel we're parsing. Do the common attributes.
+                for field in EK80_FILE_CONFIG_FIELDS:
+                    try:
+                        # For the EK60, use the mapping dict to map EK60 configuration fields
+                        # to EK80 names.
+                        file_info[field] = header['configuration'][chan][EK60_FILE_CONFIG_MAP[field]]
+                    except:
+                        # This field doesn't exist in EK60
+                        file_info[field] = None
+
+            # Add the transceiver configuration fields
+            for field in EK80_XCVR_CONFIG_FIELDS:
+                try:
+                    file_info['configuration'][chan][field] = \
+                            header['configuration'][chan][EK60_XCVR_CONFIG_MAP[field]]
+                except:
+                    file_info['configuration'][chan][field] = None
+            # set the transceiver number, which for EK60 is the channel number
+            file_info['configuration'][chan]['transceiver_number'] = chan_map_number
+            
+            # Add the transducer information
+            file_info['configuration'][chan]['transducer'] = {}
+            for field in EK80_XDCR_CONFIG_FIELDS:
+                try:
+                    if field == 'transducer_beam_type':
+                        # Add the beam type name as we know it to the numerical type
+                        beam_type = header['configuration'][chan][EK60_XDCR_CONFIG_MAP[field]]
+                        # set the name based on the type
+                        if beam_type == 0:
+                            type_name = 'Single Beam : 1 sector'
+                        elif beam_type == 1:
+                            type_name = 'Split Beam : 4 sector'
+                        elif beam_type == 17:
+                            type_name = 'Split Beam : 3 sector'
+                        elif beam_type in [49,65,81]:
+                            type_name = 'Split Beam : 3 sector with center element'
+                        else:
+                            type_name = 'Split Beam : Unknown sector configuration.'
+                            
+                        file_info['configuration'][chan]['transducer'][field] = [beam_type, type_name]
+                    else:
+                        file_info['configuration'][chan]['transducer'][field] = \
+                                header['configuration'][chan][EK60_XDCR_CONFIG_MAP[field]]
+                except:
+                    file_info['configuration'][chan]['transducer'][field] = None
+
+            # Add in the assumed values for EK60 files
+            file_info['configuration'][chan]['pulse_form'] = 'CW'
+            file_info['configuration'][chan]['transceiver_type'] = 'GPT'
+            file_info['configuration'][chan]['fpga_tx_firmware_ver'] = None
+            file_info['configuration'][chan]['fpga_rx_firmware_ver'] = None
+
+            # Parse out a few other fields from the channel ID
+            try:
+                id_parts = file_info['configuration'][chan]['channel_id'].split(' ')
+                file_info['configuration'][chan]['transceiver_type'] = id_parts[0]
+                file_info['configuration'][chan]['transceiver_name'] = id_parts[0] + ' ' + id_parts[3]
+                file_info['configuration'][chan]['serial_number'] = id_parts[3]
+                file_info['configuration'][chan]['ethernet_address'] = id_parts[3]
+                file_info['configuration'][chan]['transducer']['transducer_name'] = id_parts[-1]
+            except:
+                # If parsing these fields fails, we just bail
+                pass
+
+        # Now read ahead looking for the first RAW0 datagram for each channel to
+        # extract the remaining params from the RAW dataagrams.
+        read_all_chans = [False] * len(file_info['channels'])
+        while not np.all(read_all_chans):
+            dgram = fid.read(1)
+            if dgram['type'] == 'RAW0':
+                # channels are mapped by number in RAW0 datagrams so map that back to our channel ID
+                chan = chan_num_map[dgram['channel']]
+                # populate the rest of the initial_parameters for this channel
+                if dgram['transmit_mode'] == 1:
+                    file_info['configuration'][chan]['channel_mode'] = 'passive'
+                else:
+                    file_info['configuration'][chan]['channel_mode'] = 'active'
+                file_info['configuration'][chan]['pulse_duration'] = dgram['pulse_length']
+                file_info['configuration'][chan]['sample_interval'] = dgram['sample_interval']
+                file_info['configuration'][chan]['transmit_power'] = dgram['transmit_power']
+                file_info['configuration'][chan]['sound_velocity'] = dgram['sound_velocity']
+                file_info['configuration'][chan]['frequency'] = dgram['frequency']
+                file_info['configuration'][chan]['pulse_duration'] = dgram['pulse_length']
+                file_info['configuration'][chan]['slope'] = None
+
+                # note that we have read the RAW datagram for this channel
+                read_all_chans[dgram['channel'] - 1] = True
+
+    #  close the idx file
+    fid.close()
+
+    # If we don't have or failed to read the .idx file, scan the .raw file for
+    # the basic ping stats.
+    if not has_idx:
         # There isn't an .idx file so we're going to do this the hard way. Read
-        # the entire raw file, but don't store any data
+        # the entire raw file, but don't store any data. This is faster than a
+        # regular read, but slower than using the .idx file.
         data_object.append_raw(filename, power=False, angles=False, complex=False,
-                nmea=False)
+                nmea=False, motion=False)
+    
+        # Now extract some basic ping stats
         file_info['start_time'] = data_object.start_time
         file_info['end_time'] = data_object.end_time
         file_info['start_ping'] = data_object.start_ping
         file_info['end_ping'] = data_object.end_ping
-        file_info['n_pings'] = data_object.n_pings
-
-        # build our return dict
-        file_info['channels'] = data_object.channel_ids
-        file_info['initial_parameters']= dict.fromkeys(data_object.channel_ids, {})
-
-        # loop thru the channels and extract the initial params from the first pings
-        for chan in data_object.channel_ids:
-            # a bit lazy here, but wrap this in a try block to handle cases where files
-            # are empty or other weird cases
-            try:
-                chan_data = data_object.raw_data[chan][0]
-
-                if chan_data.transmit_mode[0] == 1:
-                    file_info['initial_parameters'][chan]['channel_mode'] = 'passive'
-                else:
-                    file_info['initial_parameters'][chan]['channel_mode'] = 'active'
-                file_info['initial_parameters'][chan]['pulse_duration'] = chan_data.pulse_length[0]
-                file_info['initial_parameters'][chan]['sample_interval'] = chan_data.sample_interval[0]
-                file_info['initial_parameters'][chan]['transmit_power'] = chan_data.transmit_power[0]
-                file_info['initial_parameters'][chan]['sound_velocity'] = chan_data.sound_speed[0]
-            except:
-                # must not have data for this channel? just move on
-                pass
-
+        file_info['n_pings'] = data_object.end_ping - data_object.start_ping
 
     return file_info
 

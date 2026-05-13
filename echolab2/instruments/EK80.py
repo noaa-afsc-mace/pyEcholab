@@ -454,7 +454,8 @@ class EK80(object):
                  start_ping=None, end_ping=None, frequencies=None,
                  channel_ids=None, incremental=None, start_sample=None,
                  end_sample=None, progress_callback=None, nmea=True,
-                 callback_ref=None, read_times=None, read_pings=None):
+                 callback_ref=None, read_times=None, read_pings=None,
+                 motion=True):
         """Reads one or more Simrad EK80 .raw files and appends the data to any
         existing data. The data are ordered as read.
 
@@ -462,10 +463,19 @@ class EK80(object):
         Args:
             raw_files (list): List containing full paths to data files to be
                 read.
-            power (bool): Controls whether power data is stored
-            angles (bool): Controls whether angle data is stored
-            complex (bool): Controls whether complex data is stored
-            nmea (bool): Set to True to store NMEA data
+            power (bool): Set to True to read power data. When set to False,
+                power data is not stored. Only has an effect if data is stored
+                in reduced (non-complex) form. Default: True
+            angles (bool): Set to True to read angle data. When set to False,
+                power data is not stored. Only has an effect if data is stored
+                in reduced (non-complex) form. Default: True
+            complex (bool): Set to True to read complex data. When set to False,
+                complex data is not stored. Only has an effect if data is stored
+                in complex form. Default: True
+            nmea (bool): Set to True to store NMEA data. When set to False,
+                they are skipped. Default: True
+            motion (bool): Set to True to read MRU datagrams. When set to False,
+                they are skipped. Default: True
             max_sample_count (int): Specify the max sample count to read
                 if your data of interest is less than the total number of
                 samples contained in the instrument files.
@@ -562,6 +572,13 @@ class EK80(object):
         if channel_ids:
             self.read_channel_ids = check_list(channel_ids)
 
+        #  check if we're reading *any* sample data
+        if not (self.store_power or self.store_angles or self.store_complex):
+            #  we're not, so set the raw argument to false in the calls to _read_datagram
+            read_raw = False
+        else:
+            read_raw = True
+
         # Ensure that the raw_files argument is a list.
         raw_files = check_list(raw_files)
 
@@ -640,7 +657,7 @@ class EK80(object):
             #  and read datagrams until we're done
             while not finished:
                 #  read a datagram - method returns some basic info
-                dg_info = self._read_datagram(fid, nmea=nmea)
+                dg_info = self._read_datagram(fid, nmea=nmea, raw=read_raw, motion=motion)
 
                 #  call progress callback if supplied
                 if (progress_callback):
@@ -804,7 +821,7 @@ class EK80(object):
         return config_datagram
 
 
-    def _read_datagram(self, fid, nmea=True):
+    def _read_datagram(self, fid, nmea=True, motion=True, raw=True):
         """Reads the next raw file datagram
 
         This method reads the next datagram from the file, storing the
@@ -821,9 +838,13 @@ class EK80(object):
                 object.
 
             nmea (bool): Set to True to read NMEA datagrams. If False, NMEA
-                datagrams will be discarded. This is primarily used with ES60
+                datagrams will be skipped. This is primarily used with ES60
                 and Mk1 EK60 .bot files that contain a copy of NMEA which is
                 also recorded in the .raw file.
+            motion (bool): Set to True to read MRU datagrams. If false, MRU
+                datagrams will be skipped.
+            raw (bool): Set to True to read RAW datagrams. If false, RAW
+                datagrams will be skipped.
         """
 
         # create a variable to track if this datagram is part of a new ping
@@ -859,11 +880,19 @@ class EK80(object):
         result['type'] = dgram_header['type']
 
         #  check datagrams that can be filtered *if* the should be filtered
-        if dgram_header['type'][:3] in ['RAW', 'BOT', 'NME']:
-
+        dg_type_short = dgram_header['type'][:3]
+        if dg_type_short in ['RAW', 'BOT', 'NME', 'MRU']:
+            
             # If this is a NMEA datagram and we're not storing them, bail
-            if not nmea and dgram_header['type'].startswith('NME'):
+            if not nmea and dg_type_short == 'NME':
                 # This is a NMEA datagram and we're skipping them
+                # so we skip the rest of the datagram and return
+                fid.skip(header=dgram_header)
+                return result
+            
+            # If this is a MRU datagram and we're not storing them, bail
+            if not motion and dg_type_short == 'MRU':
+                # This is a MRU datagram and we're skipping them
                 # so we skip the rest of the datagram and return
                 fid.skip(header=dgram_header)
                 return result
@@ -879,7 +908,7 @@ class EK80(object):
 
             #  if this is a raw datagram, we check if we're reading this specific
             #  ping and if so, increment the ping counter.
-            if dgram_header['type'].startswith('RAW'):
+            if dg_type_short == 'RAW':
                 #  if we're provided a time array we check if this ping time is 
                 #  in that array
                 if self.read_time_array is not None:
@@ -940,12 +969,27 @@ class EK80(object):
             else:
                 self.end_time = dgram_header['timestamp']
 
-        # If we're here, we're reading the datagram. First, check if we need
-        # to increment our read pings counter (n_pings).
+        # Check if we need to increment our read pings counter (n_pings).
         if new_ping:
-            # Yes, this is a new ping, and since we're here, we're reading it,
-            # so increment the read pings counter.
+            # Yes, this is a new ping so increment the read pings counter.
             self.n_pings += 1
+
+        # lastly - check if we're reading RAW datagrams. If not, we bail here, after
+        # accounting for the ping group. If we're not reading RAW datagrams we will also
+        # skip all XML datagrams.
+        if not raw and (dg_type_short == 'RAW' or dg_type_short == 'XML'):
+            
+            #  Since we're not reading any data, we have to handle some basic stats here
+            if not self.start_time:
+                self.start_time = dgram_header['timestamp']
+            if not self.start_ping:
+                self.start_ping = self._file_n_pings
+            self.end_ping = self._file_n_pings
+
+            # This is a RAW or XML datagram and we're skipping them
+            # so we skip the rest of the datagram and return
+            fid.skip(header=dgram_header)
+            return result
 
         # Now finish reading the datagram. Calling read while passing the header will
         # result in re-parsing the header values so replace the timestamp with the 
@@ -964,7 +1008,7 @@ class EK80(object):
         #print(new_datagram['type'])
 
         # Process all XML parameter datagrams
-        if new_datagram['type'].startswith('XML'):
+        if dg_type_short == 'XML':
             if new_datagram['subtype'] == 'parameter':
                 #  update the most recent parameter attribute for this channel
                 self._tx_params[new_datagram[new_datagram['subtype']]['channel_id']] = \
@@ -1022,7 +1066,7 @@ class EK80(object):
         #  FIL datagrams store parameters used to filter the received signal
         #  EK80 class stores the filters for the currently being read file.
         #  Filters are stored by channel ID and then by filter stage
-        if new_datagram['type'].startswith('FIL'):
+        if dg_type_short == 'FIL':
 
             # Check if we're storing this channel
             if new_datagram['channel_id'] in self.channel_ids:
@@ -1035,7 +1079,7 @@ class EK80(object):
                          'coefficients':new_datagram['coefficients']}
 
         # RAW datagrams store raw acoustic data for a channel.
-        elif new_datagram['type'].startswith('RAW'):
+        elif dg_type_short == 'RAW':
 
             #  ES80 systems seem to have a file format that is a precursor to the EK80 raw
             #  format. They utilize RAW0 datagrams (instead of RAW3) which contain more
@@ -1204,25 +1248,25 @@ class EK80(object):
                             end_sample=self.read_end_sample)
 
         # NME datagrams store ancillary data as NMEA-0183 style ASCII data.
-        elif new_datagram['type'].startswith('NME'):
+        elif dg_type_short == 'NME':
             # Add the datagram to our nmea_data object.
             self.nmea_data.add_datagram(new_datagram['timestamp'],
                     new_datagram['nmea_string'])
 
         # TAG datagrams contain time-stamped annotations inserted via the
         # recording software. They are not associated with a specific channel
-        elif new_datagram['type'].startswith('TAG'):
+        elif dg_type_short == 'TAG':
             # Add this datagram to our annotation_data object
             self.annotations.add_datagram(new_datagram['timestamp'],
                     new_datagram['text'])
 
         # MRU datagrams contain vessel motion data
-        elif new_datagram['type'].startswith('MRU'):
+        elif dg_type_short == 'MRU':
             # append this motion datagram to the motion_data object
             self.motion_data.add_datagram(new_datagram)
 
         # BOT datagrams contain bottom detections
-        elif new_datagram['type'].startswith('BOT'):
+        elif dg_type_short == 'BOT':
             # iterate through the channels in this .bot file
             for idx, depth in enumerate(new_datagram['depth']):
                 # Get this detection's channel ID
