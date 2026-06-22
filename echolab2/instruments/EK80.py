@@ -2133,7 +2133,7 @@ class EK80(object):
                         datatype = datatype | (1 << 0)
 
                     # If we have complex data, we have to convert to non-complex for writing
-                    if hasattr(dg_objects[idx], 'complex'):
+                    if hasattr(dg_objects[idx], 'complex') and complex:
 
                         # Determine the precision we'll use to write the data
                         if reduce_complex_precision:
@@ -2148,6 +2148,8 @@ class EK80(object):
                         # Set the number of complex samples in the datatype
                         n_complex = complex_data.shape[1]
                         datatype = datatype | (n_complex << 8)
+
+                        dgram['complex'] = complex_data
 
                         # RHT 8-27-25 - This code was moved to simrad_parsers to make the to_string
                         # and from_string raw datagram parser IO internally consistent.
