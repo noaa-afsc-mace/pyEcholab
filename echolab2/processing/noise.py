@@ -71,7 +71,7 @@ def running_mean(arr, weights=np.array([.25,.5,.25])):
         return np.convolve(padded_arr, weights, mode='valid')
 
 def get_noise(x,thresh): 
-    tmp =x[(x-np.median(x))<thresh] # trim to remove anything that might be noise
+    tmp =x[(x-np.nanmedian(x))<thresh] # trim to remove anything that might be noise
     return np_linearavg(tmp) # return noise computed in linear units and then then backtransformed
 
 # define a helper function
