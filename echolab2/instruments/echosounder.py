@@ -1773,41 +1773,90 @@ def apply_lines(data_object,exclude_below_line='xyz',exclude_above_line=None,
 
 def noise_correct(data_object, SNR_threshold=None, remove_passive=True,
         keep_noise_Sv=True, exclude_val=-999, thresh=20, min_range=5,
-        run_mean_weights=np.array([.25,.5,.25])):
+        run_mean_weights=np.array([.25, .5, .25]), smooth=False,
+        pings_smooth=5, m_smooth=2.0):
+    '''
+    Applies in-situ background noise correction and SNR threshold masking to active
+    channels using paired passive channels.
 
+    Parameters
+    ----------
+    data_object : dict
+        Dictionary of pyEcholab processed_data objects keyed by channel ID.
+    SNR_threshold : float or None, optional
+        SNR threshold in dB (e.g. 10.0). Samples failing the threshold are set to
+        exclude_val. If None, no SNR threshold masking is performed.
+    remove_passive : bool, optional
+        Whether to remove passive channels from data_object before returning (default True).
+    keep_noise_Sv : bool, optional
+        Whether to retain the noise_Sv attribute on processed active channels (default True).
+    exclude_val : float, optional
+        Value assigned to masked samples (default -999).
+    thresh : float, optional
+        Outlier threshold for passive channel noise estimation (default 20 dB).
+    min_range : float, optional
+        Minimum range in meters to exclude near-field/ringdown in passive channels (default 5 m).
+    run_mean_weights : np.ndarray, optional
+        Ping-domain running mean filter weights for passive noise power (default [.25, .5, .25]).
+    smooth : bool, optional
+        If True, computes SNR threshold mask using 2D linear-domain convolution smoothing
+        following De Robertis & Higginbottom (2007) to eliminate Rayleigh fading noise speckle.
+        If False, skips smoothing entirely and evaluates SNR directly on unsmoothed data
+        for maximum execution speed (legacy behavior). Default is False due to speed.
+    pings_smooth : int, optional
+        Number of pings in the 2D smoothing window (default 5).
+    m_smooth : float, optional
+        Vertical smoothing window in meters (default 2.0 m).
+    Returns
+    -------
+    dict
+        Dictionary of noise-corrected processed_data objects.
+    '''
     data_object = copy.deepcopy(data_object)
     remove_channels = []
 
     for channel in data_object:
         if np.all(data_object[channel].cal_parms['channel_mode'] == 0):
             passive_channel = _find_matching_channel(data_object, channel)
-            if passive_channel is None:
+            if passive_channel is None or np.all(data_object[passive_channel].cal_parms['channel_mode'] == 0):
                 warnings.warn('Unable to find matching passive channel for active channel ' + channel +
                         '. This channel will not be noise corrected.')
                 continue
             passive_channel_power = data_object[passive_channel].to_power()
-            passive_channel_power = noise.noise_from_passive(passive_channel_power,thresh=thresh,
-                    min_range=min_range,run_mean_weights=run_mean_weights)
+            passive_channel_power = noise.noise_from_passive(passive_channel_power, thresh=thresh,
+                    min_range=min_range, run_mean_weights=run_mean_weights)
 
             if passive_channel_power.noise_P.ndim == 2:
                 noise_power = np.zeros((passive_channel_power.noise_P.shape[0],
                         data_object[channel].ping_time.shape[0]),
                         dtype=passive_channel_power.noise_P.dtype)
-                for i,n in enumerate(passive_channel_power.noise_P):
+                for i, n in enumerate(passive_channel_power.noise_P):
                     noise_power[i] = np.interp(data_object[channel].ping_time.astype('d'),
                             passive_channel_power.ping_time.astype('d'), n)
             else:
                 noise_power = np.interp(data_object[channel].ping_time.astype('d'),
                         passive_channel_power.ping_time.astype('d'), passive_channel_power.noise_P)
 
-            data_object[channel].add_object_attribute('noise_power',noise_power)
+            data_object[channel].add_object_attribute('noise_power', noise_power)
             noise.Sv_noise_from_estimate(data_object[channel])
 
+            # Preserve raw (unsubtracted) Sv before noise subtraction for smoothed SNR calculation
+            raw_data = data_object[channel].data.copy() if (smooth and SNR_threshold is not None) else None
+
+            # 1. Unsmoothed noise subtraction (preserves full target sharpness)
             data_object[channel] = noise.noise_correct(data_object[channel])
 
+            # 2. SNR threshold masking
             if SNR_threshold is not None:
-                data_object[channel]=noise.SNR_threshold(data_object[channel], SNR_threshold,
-                        exclude_val=exclude_val)
+                data_object[channel] = noise.SNR_threshold(
+                    data_object[channel],
+                    SNR_threshold,
+                    exclude_val=exclude_val,
+                    smooth=smooth,
+                    pings_smooth=pings_smooth,
+                    m_smooth=m_smooth,
+                    raw_data=raw_data
+                )
 
             if remove_passive:
                 remove_channels.append(passive_channel)
@@ -1951,7 +2000,9 @@ def _compare_pulse(primary_obj,secondary_obj, raw=True):
         #  this is a processed data object
         
         #  first check if the frequencies match
-        if primary_obj.frequency.all() != secondary_obj.frequency.all():
+        p_freq = np.atleast_1d(primary_obj.frequency)
+        s_freq = np.atleast_1d(secondary_obj.frequency)
+        if p_freq.shape != s_freq.shape or not np.allclose(p_freq, s_freq, atol=1.0):
             #  they do not
             all_match = False
         else:

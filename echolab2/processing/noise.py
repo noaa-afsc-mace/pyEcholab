@@ -111,20 +111,110 @@ def noise_correct(data_object): # linear average of np array
     return data_object
 
 
-def SNR_threshold(data_obj,SNR_thresh,exclude_val=-999):
-    ''' compute SNR following De Robertis and Higginbottom eq 9-10
-    Takes an Sv processed data object smooths it using an evenly weighted
-    2-d matrix of adjacent samples via convolution. Convolution is done in linear domain
-    results back-transformed into the
-    
-    inputs
-        noise_corr_Sv - processed data object of noise corrected Sv
-        active_data_noise - noise object corresponding to noise_corr_Sv 
-        SNR_thresh - SNR threshold in dB
-        
-    Outputs
-        noise_corr_Sv data processed object with SNR<SNR_thresh replaced with -999
-    '''    
-    SNR=data_obj.data-data_obj.noise_Sv #compute SNR
-    data_obj.data[SNR<SNR_thresh]=exclude_val
+def _smooth_Sv_2d(sv_data_2d, sample_thickness, pings_smooth=5, m_smooth=2.0):
+    '''
+    Helper function to smooth a 2D Sv array (pings x samples) in linear domain
+    using normalized convolution to handle NaNs and edges without dilation.
+    '''
+    samples_smooth = max(1, int(round(m_smooth / sample_thickness)))
+    weights = np.ones((pings_smooth, samples_smooth), dtype=np.float64)
+    weights /= np.sum(weights)
+
+    # Convert to linear domain (s_v)
+    linear_data = 10.0 ** (sv_data_2d / 10.0)
+    valid_mask = ~np.isnan(linear_data)
+    linear_filled = np.where(valid_mask, linear_data, 0.0)
+
+    # Normalized 2D convolution
+    num = signal.convolve2d(linear_filled, weights, mode='same', boundary='symm')
+    denom = signal.convolve2d(valid_mask.astype(np.float64), weights, mode='same', boundary='symm')
+
+    with np.errstate(divide='ignore', invalid='ignore'):
+        smoothed_linear = np.where(denom > 0, num / denom, np.nan)
+        smoothed_sv = np.where(smoothed_linear > 0, 10.0 * np.log10(smoothed_linear), -999.0)
+    smoothed_sv[denom == 0] = np.nan
+    return smoothed_sv
+
+
+def smooth_Sv(data_obj, pings_smooth=5, m_smooth=2.0):
+    '''
+    Smooths an Sv processed data object in the linear domain using normalized 2D convolution.
+    For 2D data (CW), smooths across (pings, samples).
+    For 3D data (FM), smooths each frequency slice in 2D on a frequency-by-frequency basis.
+    '''
+    sample_thickness = getattr(data_obj, 'sample_thickness', None)
+    if sample_thickness is None or sample_thickness <= 0:
+        if hasattr(data_obj, 'range') and len(data_obj.range) > 1:
+            sample_thickness = abs(data_obj.range[1] - data_obj.range[0])
+        else:
+            sample_thickness = 1.0
+
+    if data_obj.data.ndim == 2:
+        data_obj.data = _smooth_Sv_2d(data_obj.data, sample_thickness,
+                                      pings_smooth=pings_smooth, m_smooth=m_smooth)
+    elif data_obj.data.ndim == 3:
+        n_freq = data_obj.data.shape[0]
+        indices = range(n_freq)
+        for i in indices:
+            data_obj.data[i] = _smooth_Sv_2d(data_obj.data[i], sample_thickness,
+                                             pings_smooth=pings_smooth, m_smooth=m_smooth)
+    return data_obj
+
+
+def SNR_threshold(data_obj, SNR_thresh, exclude_val=-999, smooth=False,
+                  pings_smooth=5, m_smooth=2.0, raw_data=None):
+    '''
+    Computes SNR following De Robertis and Higginbottom (2007) eqs 9-10.
+
+    If smooth=True:
+        Smooths Sv in linear domain using a 2D window (pings x meters) via normalized
+        convolution to derive the SNR mask. For 3-D arrays (FM), convolution
+        is performed in 2D on a frequency-by-frequency basis (each frequency slice is
+        smoothed and masked independently across pings and range, never across frequencies).
+    If smooth=False:
+        Skips smoothing entirely and evaluates SNR point-by-point for maximum speed.
+    '''
+    # Fast path: skip smoothing entirely
+    if not smooth:
+        SNR = data_obj.data - data_obj.noise_Sv
+        data_obj.data[SNR < SNR_thresh] = exclude_val
+        return data_obj
+
+    # If smooth...
+    source_data = raw_data if raw_data is not None else data_obj.data
+
+    sample_thickness = getattr(data_obj, 'sample_thickness', None)
+    if sample_thickness is None or sample_thickness <= 0:
+        if hasattr(data_obj, 'range') and len(data_obj.range) > 1:
+            sample_thickness = abs(data_obj.range[1] - data_obj.range[0])
+        else:
+            sample_thickness = 1.0
+
+    if source_data.ndim == 2:
+        # 2D data (CW): smooth across (pings, samples)
+        smoothed_sv = _smooth_Sv_2d(source_data, sample_thickness,
+                                    pings_smooth=pings_smooth, m_smooth=m_smooth)
+        snr = smoothed_sv - data_obj.noise_Sv
+        data_obj.data[snr < SNR_thresh] = exclude_val
+
+    elif source_data.ndim == 3:
+        # 3D data (FM/broadband): shape is (n_frequencies, n_pings, n_samples)
+        # Smooth and threshold on a frequency-by-frequency basis (smooth per 2D per slice)
+        n_freq = source_data.shape[0]
+        indices = range(n_freq)
+
+        for i in indices:
+            raw_slice = source_data[i, :, :]
+            noise_slice = data_obj.noise_Sv[i, :, :]
+
+            smoothed_sv_i = _smooth_Sv_2d(raw_slice, sample_thickness,
+                                          pings_smooth=pings_smooth, m_smooth=m_smooth)
+            snr_i = smoothed_sv_i - noise_slice
+            mask_i = (snr_i < SNR_thresh)
+            data_obj.data[i, mask_i] = exclude_val
+
+    else:
+        SNR = data_obj.data - data_obj.noise_Sv
+        data_obj.data[SNR < SNR_thresh] = exclude_val
+
     return data_obj
