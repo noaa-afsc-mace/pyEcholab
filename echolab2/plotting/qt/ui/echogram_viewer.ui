@@ -60,7 +60,7 @@
   <customwidget>
    <class>QEchogramViewer</class>
    <extends>QGraphicsView</extends>
-   <header>MaceFunctions.QImageViewer.QEchogramViewer</header>
+   <header>..QImageViewer.QEchogramViewer</header>
   </customwidget>
  </customwidgets>
  <resources/>

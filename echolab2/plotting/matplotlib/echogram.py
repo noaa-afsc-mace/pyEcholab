@@ -32,7 +32,7 @@ from matplotlib import figure, axes
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from matplotlib.colors import LinearSegmentedColormap, Colormap
-import echolab2.processing.grid
+from ...processing import grid as processing_grid
 
 
 class Echogram(object):
@@ -147,7 +147,7 @@ class Echogram(object):
         self.adjust_x = adjust_x
         
         #  store the grid, if provided
-        if isinstance(grid, echolab2.processing.grid.grid):
+        if isinstance(grid, processing_grid.grid):
             self.grid = grid
         else:
             self.grid = None
@@ -251,7 +251,7 @@ class Echogram(object):
             update (bool): Set to True to update the plot.
         """
 
-        if isinstance(grid_obj, echolab2.processing.grid.grid):
+        if isinstance(grid_obj, processing_grid.grid):
             self.grid=grid_obj
 
         if update:

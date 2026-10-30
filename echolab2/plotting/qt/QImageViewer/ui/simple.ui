@@ -29,7 +29,7 @@
   <customwidget>
    <class>QImageViewer</class>
    <extends>QGraphicsView</extends>
-   <header>QImageViewer.QImageViewer</header>
+   <header>..QImageViewer</header>
   </customwidget>
  </customwidgets>
  <resources/>

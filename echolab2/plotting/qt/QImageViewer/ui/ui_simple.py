@@ -34,4 +34,4 @@ class Ui_simple(object):
     def retranslateUi(self, simple):
         _translate = QtCore.QCoreApplication.translate
         simple.setWindowTitle(_translate("simple", "Simple Zoom Example"))
-from QImageViewer.QImageViewer import QImageViewer
+from ..QImageViewer import QImageViewer
