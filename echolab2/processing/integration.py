@@ -424,7 +424,7 @@ class integrator(object):
                         # When applying threshold masks for integration, you want the samples
                         # to be included in the layer thickness calculation so we will just
                         # set these samples to a tiny number
-                        cell_zero = threshold_mask[cell_mask]
+                        cell_zero = threshold_mask[f][cell_mask] if is_3d else threshold_mask[cell_mask]
                         if p_data.is_log:
                             cell_data[cell_zero] = -999
                         else:
