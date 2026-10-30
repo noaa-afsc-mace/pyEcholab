@@ -4,12 +4,12 @@ import os
 import cv2
 import numpy as np
 import qimage2ndarray
-from PyQt6 import QtGui
-from PyQt6.QtCore import *
+from PySide6 import QtGui
+from PySide6.QtCore import *
 
 class QEnhancedImage(QObject):
 
-    imageData = pyqtSignal(QtGui.QImage)
+    imageData = Signal(QtGui.QImage)
 
     def __init__(self, maxQueued=3):
 

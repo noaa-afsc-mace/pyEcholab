@@ -112,17 +112,17 @@ rick.towler@noaa.gov
 """
 
 import os
-from PyQt6.QtCore import *
-from PyQt6.QtGui import *
-from PyQt6.QtWidgets import *
-from PyQt6.QtOpenGL import *
+from PySide6.QtCore import *
+from PySide6.QtGui import *
+from PySide6.QtWidgets import *
+from PySide6.QtOpenGL import *
 from .QViewerBase import QViewerBase
 from .QEnhancedImage import QEnhancedImage
 from .imageAdjustmentsDlg import imageAdjustmentsDlg
 
 class QImageViewer(QViewerBase):
 
-    imageUpdate = pyqtSignal()
+    imageUpdate = Signal()
 
     def __init__(self, parent=None, useGL=False, backgroundColor=[50,50,50],
             maxQueued=3):

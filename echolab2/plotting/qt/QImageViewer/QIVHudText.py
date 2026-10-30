@@ -5,8 +5,8 @@ NOAA Alaska Fisheries Science Center
 rick.towler@noaa.gov
 """
 
-from PyQt6.QtCore import *
-from PyQt6.QtGui import *
+from PySide6.QtCore import *
+from PySide6.QtGui import *
 
 class QIVHudText(QObject):
     """

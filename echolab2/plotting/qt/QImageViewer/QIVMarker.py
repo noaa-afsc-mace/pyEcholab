@@ -5,9 +5,9 @@ NOAA Alaska Fisheries Science Center
 rick.towler@noaa.gov
 """
 
-from PyQt6.QtCore import *
-from PyQt6.QtGui import *
-from PyQt6.QtWidgets import *
+from PySide6.QtCore import *
+from PySide6.QtGui import *
+from PySide6.QtWidgets import *
 from .QIVMarkerText import QIVMarkerText
 
 class QIVMarker(QGraphicsItemGroup):
@@ -441,13 +441,13 @@ class QIVMarker(QGraphicsItemGroup):
         #  set the brush for filling the polygon
         if (color):
             #  check if we've been given a QColor object to use as fill
-            if (fill.__class__.__name__.lower() == 'qcolor'):
+            if (color.__class__.__name__.lower() == 'qcolor'):
                 #  we have a QColor object
                 self.markItem.setBrush(QBrush(color))
             else:
                 #  must be a list - if alpha isn't explicitly supplied, use the outline value
                 if (len(color) == 3):
-                    fill.append(self.alpha)
+                    color.append(self.alpha)
                 brush = QBrush(QColor(color[0], color[1], color[2], color[3]))
                 self.markItem.setBrush(brush)
         else:

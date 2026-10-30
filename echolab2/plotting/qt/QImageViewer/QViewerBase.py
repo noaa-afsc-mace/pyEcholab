@@ -118,10 +118,11 @@ rick.towler@noaa.gov
 """
 
 import qimage2ndarray
-from PyQt6.QtCore import *
-from PyQt6.QtGui import *
-from PyQt6.QtWidgets import *
-from PyQt6.QtOpenGL import *
+from PySide6.QtCore import *
+from PySide6.QtGui import *
+from PySide6.QtWidgets import *
+from PySide6.QtOpenGL import *
+from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from .QIVDimensionLine import QIVDimensionLine
 from .QIVMarkerText import QIVMarkerText
 from .QIVHudText import QIVHudText
@@ -133,14 +134,14 @@ from .QIVGrid import QIVGrid
 class QViewerBase(QGraphicsView):
 
     #  define PyQt Signals
-    mouseWheel = pyqtSignal(object, object)
-    mouseRelease = pyqtSignal(object, 'QPointF', object, object, list)
-    mousePress = pyqtSignal(object, 'QPointF', object, object, list)
-    mouseMove = pyqtSignal(object, 'QPointF', object, list, list)
-    rubberBand = pyqtSignal(object, 'QRect', list)
-    keyRelease = pyqtSignal(object, object)
-    keyPress = pyqtSignal(object, object)
-    imageData = pyqtSignal('QImage')
+    mouseWheel = Signal(object, object)
+    mouseRelease = Signal(object, 'QPointF', object, object, list)
+    mousePress = Signal(object, 'QPointF', object, object, list)
+    mouseMove = Signal(object, 'QPointF', object, list, list)
+    rubberBand = Signal(object, 'QRect', list)
+    keyRelease = Signal(object, object)
+    keyPress = Signal(object, object)
+    imageData = Signal('QImage')
 
     def __init__(self, parent=None, useGL=False, backgroundColor=[50,50,50]):
         super(QViewerBase, self).__init__(parent)
@@ -245,8 +246,11 @@ class QViewerBase(QGraphicsView):
         if (enable and not self.glEnabled ):
             #  enable an OGL viewport widget
             self.glEnabled = True
-            self.setViewport(QGLWidget(QGLFormat(QGL.FormatOption.SampleBuffers|
-                    QGL.FormatOption.DirectRendering), self))
+            gl_format = QSurfaceFormat()
+            gl_format.setSamples(4) 
+            gl_viewport = QOpenGLWidget(self)
+            gl_viewport.setFormat(gl_format)
+            self.setViewport(gl_viewport)
             self.setRenderHints(QPainter.RenderHint.Antialiasing)
             self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.FullViewportUpdate)
             self.update()

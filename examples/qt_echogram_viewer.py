@@ -8,7 +8,7 @@ This example reads a couple of ES60 .raw files, reads the .out file,
 gets Sv, and plots the echogram and the bottom line. It also shows
 how
 
-The QImageViewer library Requires PyQt6.
+The QImageViewer library Requires PySide6.
 
 QEchogramViewer implements panning and zooming. When the application
 has focus and the mouse is within the echogram window, you can pan and
@@ -24,7 +24,7 @@ units of range/depth and time.
 """
 
 
-from PyQt6 import QtWidgets
+from PySide6 import QtWidgets
 from echolab2.instruments import EK60
 from echolab2.plotting.qt import echogram_viewer
 

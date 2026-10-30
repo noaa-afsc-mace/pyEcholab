@@ -1,6 +1,6 @@
 
-from PyQt6.QtCore import *
-from PyQt6.QtGui import *
+from PySide6.QtCore import *
+from PySide6.QtGui import *
 import numpy
 import datetime
 from .QViewerBase import QViewerBase
@@ -8,9 +8,9 @@ import qimage2ndarray
 
 class QEchogramViewer(QViewerBase):
 
-    mouseRelease = pyqtSignal(object, object, int, object, list)
-    mousePress = pyqtSignal(object, object, int, object, list)
-    mouseMove = pyqtSignal(object, object, object, list, list)
+    mouseRelease = Signal(object, object, int, object, list)
+    mousePress = Signal(object, object, int, object, list)
+    mouseMove = Signal(object, object, object, list, list)
 
     def __init__(self, parent=None, useGL=False, backgroundColor=[50,50,50]):
         super(QEchogramViewer, self).__init__(parent, useGL=useGL,
