@@ -85,6 +85,11 @@ def get_xyz_filenames(basename, data_object, raw_index=0):
     #  look for XYZ files adjacent to the datafile
     xyz_files = {}
     for channel_id in data_object.raw_data:
+        
+        # In incomplete sequence files, data_object may not contain raw_data  for all
+        # values of raw_index due to not cycling through an entire sequence
+        if not data_object.raw_data[channel_id] or len(data_object.raw_data[channel_id]) <= raw_index:
+            continue
 
         #  By default we assume the user is working with a single data type and
         #  we grab the first raw_data object in the channel's list of raw objects.

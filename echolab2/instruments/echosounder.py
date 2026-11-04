@@ -281,6 +281,12 @@ def get_calibration_from_raw(data_object, **kwargs):
     calibrations = {}
 
     for chan in data_object.raw_data:
+        
+        # In incomplete sequence files, data_object may not contain raw_data  for all
+        # values of raw_index due to not cycling through an entire sequence
+        if not data_object.raw_data[chan]:
+            continue
+       
         calibrations[chan] = data_object.raw_data[chan][0].get_calibration(**kwargs)
 
     return calibrations
@@ -328,6 +334,12 @@ def get_calibration_from_ecs(data_object, ecs_file, channel_map=None, **kwargs):
     T = 1
 
     for chan in data_object.raw_data:
+        
+        # In incomplete sequence files, data_object may not contain raw_data  for all
+        # values of raw_index due to not cycling through an entire sequence
+        if not data_object.raw_data[chan]:
+            continue
+        
         calibrations[chan] = data_object.raw_data[chan][0].get_calibration(**kwargs)
 
         #  Generate the EV calibration label.
@@ -1040,6 +1052,11 @@ def _get_processed_data(data_object, data_type, fm_frequency_domain=True, calibr
 
     #  iterate thru all of the channels
     for chan in data_object.raw_data:
+        
+        # In incomplete sequence files, data_object may not contain raw_data  for all
+        # values of raw_index due to not cycling through an entire sequence
+        if not data_object.raw_data[chan]:
+            continue
 
         #  get a reference to this channel's raw data
         raw_obj = data_object.raw_data[chan][0]
